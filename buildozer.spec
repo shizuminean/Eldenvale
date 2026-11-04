@@ -15,6 +15,7 @@ android.api = 33
 android.minapi = 21
 android.accept_sdk_license = True
 p4a.bootstrap = sdl2
+p4a.branch = v2023.09.16
 p4a.branch = develop
 
 [buildozer]
