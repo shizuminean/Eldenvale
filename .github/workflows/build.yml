@@ -26,7 +26,8 @@ jobs:
           buildozer -v android debug 2>&1 | tee build.log
       - name: Ringkasan error
         if: failure()
-        run: grep -n -i -E "error|failed|fatal|undefined reference|Traceback" build.log | tail -60
+        run: |
+          grep -v '^# ' build.log | grep -v -E '^\s*$' | tail -35
       - uses: actions/upload-artifact@v4
         with:
           name: eldenvale-apk
