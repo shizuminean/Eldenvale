@@ -21,22 +21,32 @@ MAP = pygame.image.load(A('map.png')).convert()
 MW, MH = MAP.get_size()
 
 
-def load(name, h):
+SHADOW = pygame.Surface((40, 16), pygame.SRCALPHA)
+pygame.draw.ellipse(SHADOW, (0, 0, 0, 90), SHADOW.get_rect())
+
+
+def load(name, h=None, scale=None):
     img = pygame.image.load(A(name)).convert_alpha()
-    return pygame.transform.smoothscale(img, (max(1, int(img.get_width() * h / img.get_height())), h))
+    if scale: size = (max(1, int(img.get_width() * scale)), max(1, int(img.get_height() * scale)))
+    else: size = (max(1, int(img.get_width() * h / img.get_height())), h)
+    return pygame.transform.smoothscale(img, size)
 
 
 class Sheet:
-    def __init__(self, who, h):
-        self.f = {}
+    def __init__(self, who, h=66, scale=None):
+        self.f, self.idle = {}, {}
         for d in ('down', 'side', 'up'):
-            fr = [load(f'{who}_{d}_{i}.png', h) for i in (0, 1) if os.path.exists(A(f'{who}_{d}_{i}.png'))]
-            if len(fr) == 1:
-                fr.append(fr[0])
+            fr, i = [], 0
+            while os.path.exists(A(f'{who}_{d}_{i}.png')):
+                fr.append(load(f'{who}_{d}_{i}.png', h, scale)); i += 1
+            if len(fr) == 1: fr.append(fr[0])
             self.f[d] = fr
+            p = f'{who}_idle_{d}.png'
+            self.idle[d] = load(p, h, scale) if os.path.exists(A(p)) else fr[0]
 
-    def get(self, d, step, flip=False):
-        im = self.f[d][step % 2]
+    def get(self, d, step, flip=False, moving=True):
+        fr = self.f[d]
+        im = fr[int(step) % len(fr)] if moving else self.idle[d]
         return pygame.transform.flip(im, True, False) if flip else im
 
 
@@ -71,15 +81,22 @@ NPCS = [
     dict(name="Mira", who="girl", pos=(700, 565), kind="girl"),
 ]
 SPR = {}
-hero = Sheet('hero', 66)
+HS = 76 / pygame.image.load(A('hero_idle_down.png')).get_height()   # skala karakter utama
+hero = Sheet('hero', scale=HS)
+BAT_IDLE = load('hero_battle_idle.png', scale=HS * 3)
+BAT_ATK = load('hero_battle_atk.png', scale=HS * 3)
+RADIUS = {'quest': 70, 'priest': 55, 'shop': 55, 'smith': 70, 'inn': 80, 'archer': 130, 'girl': 150}
 for n in NPCS:
     SPR[n['who']] = Sheet(n['who'], 66)
+    n.update(pos=list(n['pos']), home=tuple(n['pos']), r=RADIUS.get(n['kind'], 70), d='down', flip=False,
+             anim=0, moving=False, tgt=None, wait=pygame.time.get_ticks() + random.randint(500, 3500),
+             spd=random.uniform(34, 52))
 
 
 # ---------- state ----------
 class P:  # player
     x, y = 880.0, 520.0
-    d, step, flip, dist = 'down', 0, False, 0.0
+    d, step, flip, dist, moving = 'down', 0, False, 0.0, False
     lv, xp, gold = 1, 0, 40
     hp = maxhp = 60
     mp = maxmp = 20
@@ -96,12 +113,50 @@ def need(lv): return 20 + lv * lv * 8
 def feet(x, y): return pygame.Rect(int(x) - 12, int(y) - 12, 24, 14)
 
 
-def blocked(x, y):
+def blocked(x, y, skip=None):
     r = feet(x, y)
     if any(r.colliderect(b) for b in BLOCK): return True
     for n in NPCS:
-        if r.colliderect(feet(*n['pos']).inflate(10, 6)): return True
+        if n is not skip and r.colliderect(feet(*n['pos']).inflate(10, 6)): return True
+    if skip is not None and r.colliderect(feet(P.x, P.y).inflate(14, 8)): return True
     return False
+
+
+def face(n, tx, ty):
+    dx, dy = tx - n['pos'][0], ty - n['pos'][1]
+    if abs(dx) > abs(dy): n['d'], n['flip'] = 'side', dx < 0
+    else: n['d'], n['flip'] = ('down' if dy > 0 else 'up'), False
+
+
+def update_npcs(dt):
+    t = pygame.time.get_ticks()
+    for n in NPCS:
+        x, y = n['pos']
+        if mode != 'explore' or math.hypot(x - P.x, y - P.y) < 85:   # berhenti & menoleh ke pemain
+            n['moving'] = False; n['tgt'] = None
+            if mode == 'explore': face(n, P.x, P.y)
+            continue
+        if n['tgt'] is None:
+            n['moving'] = False
+            if t < n['wait']:
+                if random.random() < 0.006: n['d'], n['flip'] = random.choice([('down', False), ('up', False), ('side', False), ('side', True)])
+                continue
+            hx, hy = n['home']; r = n['r']
+            tx, ty = hx + random.uniform(-r, r), hy + random.uniform(-r * 0.6, r * 0.6)
+            if blocked(tx, ty, n): n['wait'] = t + 250; continue
+            n['tgt'] = (tx, ty)
+        tx, ty = n['tgt']; dx, dy = tx - x, ty - y; dist = math.hypot(dx, dy)
+        if dist < 4:
+            n['tgt'] = None; n['moving'] = False; n['wait'] = t + random.randint(1500, 5000); continue
+        sp = n['spd'] * min(dt, 50) / 1000
+        nx, ny = x + dx / dist * sp, y + dy / dist * sp
+        moved = False
+        if not blocked(nx, y, n): n['pos'][0] = nx; moved = True
+        if not blocked(n['pos'][0], ny, n): n['pos'][1] = ny; moved = True
+        if not moved: n['tgt'] = None; n['wait'] = t + 600; n['moving'] = False; continue
+        if abs(dx) > abs(dy): n['d'], n['flip'] = 'side', dx < 0
+        else: n['d'], n['flip'] = ('down' if dy > 0 else 'up'), False
+        n['moving'] = True; n['anim'] += dt
 
 
 mode = 'explore'
@@ -142,6 +197,7 @@ def gain(xp, gold):
 
 # ---------- NPC logic ----------
 def talk(n):
+    face(n, P.x, P.y)
     k, nm = n['kind'], n['name']
     if k == 'quest':
         if P.quest == 0:
@@ -191,7 +247,7 @@ def start_battle(deep=False):
     nm = random.choice(names); hp, atk, xp, gd, col = KINDS[nm]
     s = 1 + (P.lv - 1) * 0.18
     battle = dict(name=nm, hp=int(hp * s), maxhp=int(hp * s), atk=int(atk * s), xp=int(xp * s), gold=int(gd * s), col=col,
-                  snap=screen.copy(), state='cmd', idx=0, log=f"Seekor {nm} liar muncul!", t=0, shake=0, flash=0)
+                  snap=screen.copy(), state='cmd', idx=0, log=f"Seekor {nm} liar muncul!", t=0, shake=0, flash=0, atk_until=0)
     mode = 'battle'
 
 
@@ -202,11 +258,11 @@ def blog(t, state, delay=700):
 def player_act(i):
     b = battle
     if i == 0:
-        d = max(1, P.atk + random.randint(-2, 3) - 0); b['hp'] -= d; b['shake'] = 12
+        d = max(1, P.atk + random.randint(-2, 3) - 0); b['hp'] -= d; b['shake'] = 12; b['atk_until'] = pygame.time.get_ticks() + 650
         blog(f"Kamu menyerang! {d} damage.", 'after')
     elif i == 1:
         if P.mp < 5: blog("MP tidak cukup!", 'cmd', 500); return
-        P.mp -= 5; d = int(P.atk * 2 + random.randint(0, 4)); b['hp'] -= d; b['shake'] = 18
+        P.mp -= 5; d = int(P.atk * 2 + random.randint(0, 4)); b['hp'] -= d; b['shake'] = 18; b['atk_until'] = pygame.time.get_ticks() + 650
         blog(f"Tebasan Merah! {d} damage.", 'after')
     elif i == 2:
         if P.pot > 0: P.pot -= 1; P.hp = min(P.maxhp, P.hp + 30); blog("Minum Ramuan: HP +30.", 'enemy')
@@ -286,10 +342,9 @@ def wrap(t, font, w):
 def draw_battle():
     b = battle; t = pygame.time.get_ticks()
     screen.blit(b['snap'], (0, 0)); ov = pygame.Surface((W, H), pygame.SRCALPHA); ov.fill((0, 0, 20, 150)); screen.blit(ov, (0, 0))
-    pim = hero.get('side', t // 300)
-    pim = pygame.transform.smoothscale(pim, (pim.get_width() * 3, pim.get_height() * 3))
+    pim = BAT_ATK if t < b.get('atk_until', 0) else BAT_IDLE
     ox = random.randint(-6, 6) if b['flash'] else 0
-    screen.blit(pim, (220 + ox, 320))
+    screen.blit(pim, (170 + ox, 510 - pim.get_height() + int(math.sin(t / 280) * 4)))
     if b['hp'] > 0 or b['state'] == 'after':
         sx = random.randint(-8, 8) if b['shake'] else 0
         draw_enemy(b['name'], b['col'], 900 + sx, 330, t)
@@ -308,11 +363,11 @@ def draw_battle():
 def draw_world():
     cx = max(0, min(MW - W, int(P.x - W / 2))); cy = max(0, min(MH - H, int(P.y - H / 2)))
     screen.blit(MAP, (0, 0), (cx, cy, W, H))
-    ents = [(n['pos'][1], SPR[n['who']].get('down', 0), n['pos'], n['name']) for n in NPCS]
-    ents.append((P.y, hero.get(P.d, P.step, P.flip), (P.x, P.y), None))
+    ents = [(n['pos'][1], SPR[n['who']].get(n['d'], n['anim'] // 190, n['flip'], n['moving']), n['pos'], n['name']) for n in NPCS]
+    ents.append((P.y, hero.get(P.d, P.step, P.flip, P.moving), (P.x, P.y), None))
     for _, im, (x, y), nm in sorted(ents, key=lambda e: e[0]):
         sx, sy = int(x - cx), int(y - cy)
-        pygame.draw.ellipse(screen, (0, 0, 0, 80), (sx - 18, sy - 8, 36, 14))
+        screen.blit(SHADOW, (sx - 20, sy - 9))
         screen.blit(im, (sx - im.get_width() // 2, sy - im.get_height() + 6))
         if nm: 
             lab = f_s.render(nm, True, (255, 240, 180)); screen.blit(lab, (sx - lab.get_width() // 2, sy - im.get_height() - 12))
@@ -483,18 +538,20 @@ while True:
         if abs(joy_vec[0]) > 0.3: dx = 1 if joy_vec[0] > 0 else -1
         if abs(joy_vec[1]) > 0.3: dy = 1 if joy_vec[1] > 0 else -1
         if dx or dy:
-            sp = 3.2 * (0.7071 if dx and dy else 1)
+            sp = 275 * min(dt, 50) / 1000 * (0.7071 if dx and dy else 1)
             nx, ny = P.x + dx * sp, P.y + dy * sp
             if not blocked(nx, P.y): P.x = nx
             if not blocked(P.x, ny): P.y = ny
             if abs(dx) >= abs(dy) and dx: P.d, P.flip = 'side', dx < 0
             elif dy: P.d, P.flip = ('down' if dy > 0 else 'up'), False
-            walk_t += dt; P.step = walk_t // 160; P.dist += sp
+            walk_t += dt; P.step = int(walk_t // 105); P.dist += sp; P.moving = True
             r = feet(P.x, P.y)
             if any(r.colliderect(w) for w in WILD) and P.dist > random.randint(260, 520):
                 P.dist = 0; start_battle(deep=P.y > 840)
-        else: P.step = 0
+        else: P.step = 0; P.moving = False
     elif mode == 'battle': update_battle()
+    if mode != 'explore': P.moving = False
+    update_npcs(dt)
 
     screen.fill((0, 0, 0))
     if mode == 'battle': draw_battle()
