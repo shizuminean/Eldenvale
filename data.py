@@ -137,13 +137,19 @@ DOORS = {
 # interior: crop = bbox pada gambar asli; semua rect memakai koordinat gambar asli
 INTERIORS = {
     'inn': dict(crop=(12, 28, 414, 418), floor=[(45, 150, 345, 246)], solid=[(70, 262, 70, 50), (62, 318, 75, 48), (300, 305, 90, 55)],
-                exit=(130, 385, 150, 22), spawn=(205, 368), npc=('Rosalind', 'rose', 'inn', (250, 235))),
+                exit=(130, 385, 150, 22), spawn=(205, 368), npc=('Rosalind', 'n01', 'inn', (250, 235))),
     'potion': dict(crop=(1108, 32, 1522, 424), floor=[(1140, 200, 350, 195)], solid=[(1290, 225, 130, 65)],
-                   exit=(1235, 385, 110, 22), spawn=(1290, 368), npc=('Penyihir Orn', 'mage', 'shop', (1330, 305))),
+                   exit=(1235, 385, 110, 22), spawn=(1290, 368), npc=('Penyihir Orn', 'n25', 'shop', (1330, 305))),
     'smith': dict(crop=(30, 446, 430, 692), floor=[(45, 545, 365, 130)], solid=[(85, 548, 100, 55), (190, 612, 48, 40), (270, 590, 80, 45)],
-                  exit=(255, 662, 90, 22), spawn=(300, 648), npc=('Brom si Pandai Besi', 'smith', 'smith', (150, 635))),
+                  exit=(255, 662, 90, 22), spawn=(300, 648), npc=('Brom si Pandai Besi', 'n02', 'smith', (150, 635))),
     'green': dict(crop=(1116, 450, 1516, 752), floor=[(1135, 600, 355, 140)], solid=[(1205, 640, 90, 45), (1300, 612, 60, 60), (1135, 600, 45, 60)],
-                  exit=(1210, 722, 90, 22), spawn=(1255, 700), npc=('Nenek Wren', 'noble', 'granny', (1410, 665))),
+                  exit=(1210, 722, 90, 22), spawn=(1255, 700), npc=('Nenek Wren', 'n04', 'granny', (1410, 665))),
     'church': dict(crop=(455, 2, 1092, 602), floor=[(495, 365, 530, 150), (690, 290, 195, 255)], solid=[(540, 395, 70, 95), (950, 400, 55, 55)],
-                   exit=(735, 520, 95, 25), spawn=(782, 498), npc=('Suster Lyra', 'priest', 'priest', (700, 440))),
+                   exit=(735, 520, 95, 25), spawn=(782, 498), npc=('Pendeta Elias', 'n10', 'priest', (700, 440))),
 }
+
+# monster berburu yang terlihat di peta Hutan Berburu: (nama, x, y, radius jelajah)
+HUNT_SPAWNS = [('Slime Hijau', 616, 504, 70), ('Slime Ungu', 696, 568, 60), ('Slime Biru', 760, 488, 60), ('Kelelawar', 552, 424, 80),
+               ('Babi Hutan', 488, 600, 70), ('Serigala Hitam', 360, 360, 70), ('Serigala Putih', 424, 472, 70), ('Goblin', 792, 696, 70),
+               ('Goblin Pemanah', 888, 696, 60), ('Laba-laba Merah', 568, 664, 60), ('Kerangka', 328, 232, 50), ('Bandit', 584, 440, 60),
+               ('Kobra', 664, 600, 40), ('Zombie', 1304, 392, 70), ('Ghoul', 1192, 440, 60), ('Golem Lumut', 1336, 472, 50), ('Vampir', 328, 168, 40)]

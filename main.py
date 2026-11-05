@@ -95,6 +95,10 @@ def mon_img(m):
 
 MAP = pygame.image.load(A('map.png')).convert()
 MW, MH = MAP.get_size()
+HMAP = pygame.image.load(A('hunt.png')).convert()
+HW, HH = HMAP.get_size()
+_hm = pygame.image.load(A('hunt_mask.png')); HGW, HGH = _hm.get_size()
+HGRID = [[_hm.get_at((i, j))[0] > 128 for i in range(HGW)] for j in range(HGH)]
 SHADOW = pygame.Surface((40, 16), pygame.SRCALPHA)
 pygame.draw.ellipse(SHADOW, (0, 0, 0, 90), SHADOW.get_rect())
 
@@ -123,7 +127,11 @@ hero = Sheet('hero', scale=HS)
 BAT_IDLE = load('hero_battle_idle.png', scale=HS * 3)
 BAT_ATK = load('hero_battle_atk.png', scale=HS * 3)
 SHEETS = {}
-for _w in ('knight', 'archer', 'girl', 'noble'): SHEETS[_w] = Sheet(_w, 66)
+
+
+def sheet_for(who):
+    if who not in SHEETS: SHEETS[who] = Sheet(who, 70)
+    return SHEETS[who]
 
 # ---------------- dunia luar ----------------
 BLOCK = [pygame.Rect(*r) for r in [
@@ -138,15 +146,34 @@ WILD = [(pygame.Rect(*r), z) for r, z in [((60, 590, 260, 120), 'near'), ((900, 
 DOORR = {k: pygame.Rect(*v['trig']) for k, v in DOORS.items()}
 DOOR_NAME = {'inn': 'Penginapan', 'church': 'Gereja', 'potion': 'Toko Ramuan', 'smith': 'Pandai Besi', 'green': 'Rumah Nenek Wren'}
 
+GATE, GATE_OUT = pygame.Rect(820, 890, 100, 24), (870, 850)
+HEXIT, HENTRY = pygame.Rect(660, 892, 52, 24), (696, 830)
 NPCS = [
-    dict(name="Sir Aldric", who="knight", pos=(800, 330), kind="quest", r=70),
-    dict(name="Fenn si Pemanah", who="archer", pos=(1120, 520), kind="archer", r=130),
-    dict(name="Mira", who="girl", pos=(700, 565), kind="girl", r=150),
-    dict(name="Cale si Pedagang", who="noble", pos=(1010, 470), kind="chat", r=110,
-         lines=["Barang dagangan terbaik ada di toko Orn dan Brom!", "Monster di selatan menjatuhkan bahan yang laku mahal."]),
-    dict(name="Anya", who="girl", pos=(560, 545), kind="chat", r=90,
+    dict(name="Sir Aldric", who="n05", pos=(800, 330), kind="quest", r=40, still=True),
+    dict(name="Mira", who="n27", pos=(700, 565), kind="girl", r=150),
+    dict(name="Cale si Pedagang", who="n29", pos=(1010, 470), kind="chat", r=110,
+         lines=["Barang dagangan terbaik ada di toko Orn dan Brom!", "Monster di Hutan Berburu menjatuhkan bahan yang laku mahal."]),
+    dict(name="Anya", who="n19", pos=(560, 545), kind="chat", r=90,
          lines=["Aku pernah masuk gereja. Di dalamnya megah sekali!", "Ssst, kata orang ada Raja Slime di rumput luar desa."]),
+    dict(name="Fenn si Pemanah", who="n14", pos=(1120, 520), kind="archer", r=130),
+    dict(name="Kesatria Ines", who="n18", pos=(1000, 330), kind="chat", r=100,
+         lines=["Aku berpatroli di sini setiap hari.", "Monster di Hutan Berburu bisa dilihat dari jauh. Hindari yang terlalu kuat!"]),
+    dict(name="Madam Ruby", who="n11", pos=(900, 520), kind="chat", r=90,
+         lines=["Aku meramal... kau akan segera naik level!", "Vampir penjaga gua di hutan itu sangat berbahaya."]),
+    dict(name="Penyihir Selene", who="n26", pos=(700, 450), kind="chat", r=80,
+         lines=["Esensi dari slime bagus untuk ramuan.", "Kumpulkan bahan, lalu jual ke Orn."]),
+    dict(name="Kakek Odo", who="n03", pos=(1030, 560), kind="chat", r=0, still=True,
+         lines=["Dulu aku berburu di hutan selatan. Sekarang cukup duduk di sini.", "Naga kecil penghuni hutan menjatuhkan Pedang Darah, konon."]),
+    dict(name="Penjaga Gerbang", who="n08", pos=(812, 855), kind="chat", r=0, still=True,
+         lines=["Gerbang selatan menuju Hutan Berburu.", "Monster di sana terlihat dan akan mengejarmu. Bawa ramuan!"]),
+    dict(name="Putri Elara", who="n28", pos=(790, 420), kind="chat", r=0, still=True,
+         lines=["Air mancur ini kesukaanku.", "Pahlawan sepertimu selalu disambut di Eldenvale."]),
 ]
+HNPCS = [dict(name="Pemburu Rhea", who="n15", pos=(1345, 415), kind="camp", r=0, still=True)]
+area = 'town'
+
+
+def anpcs(): return NPCS if area == 'town' else HNPCS
 
 
 def init_npc(n):
@@ -154,7 +181,7 @@ def init_npc(n):
              wait=pygame.time.get_ticks() + random.randint(500, 3500), spd=random.uniform(34, 52))
 
 
-for _n in NPCS: init_npc(_n)
+for _n in NPCS + HNPCS: init_npc(_n)
 
 
 class P:
@@ -274,10 +301,19 @@ def gain(xp, gold):
 
 
 # ---------------- collision & NPC luar ----------------
+def hunt_ok(r):
+    for px, py in (r.topleft, (r.right - 1, r.top), (r.left, r.bottom - 1), (r.right - 1, r.bottom - 1)):
+        i, j = px // 16, py // 16
+        if not (0 <= i < HGW and 0 <= j < HGH and HGRID[j][i]): return False
+    return True
+
+
 def blocked(x, y, skip=None):
     r = feet(x, y)
-    if any(r.colliderect(b) for b in BLOCK): return True
-    for n in NPCS:
+    if area == 'town':
+        if any(r.colliderect(b) for b in BLOCK): return True
+    elif not hunt_ok(r): return True
+    for n in anpcs():
         if n is not skip and r.colliderect(feet(*n['pos']).inflate(10, 6)): return True
     if skip is not None and r.colliderect(feet(P.x, P.y).inflate(14, 8)): return True
     return False
@@ -291,11 +327,11 @@ def face(n, tx, ty):
 
 def update_npcs(dt):
     t = pygame.time.get_ticks()
-    for n in NPCS:
-        x, y = n['pos']
-        if mode != 'explore' or math.hypot(x - P.x, y - P.y) < 85 or not S['wander']:
+    for n in anpcs():
+        x, y = n['pos']; near = math.hypot(x - P.x, y - P.y) < 85
+        if mode != 'explore' or near or not S['wander'] or n.get('still'):
             n['moving'] = False; n['tgt'] = None
-            if mode == 'explore' and math.hypot(x - P.x, y - P.y) < 85: face(n, P.x, P.y)
+            if mode == 'explore' and near: face(n, P.x, P.y)
             continue
         if n['tgt'] is None:
             n['moving'] = False
@@ -318,6 +354,69 @@ def update_npcs(dt):
         n['moving'] = True; n['anim'] += dt
 
 
+# ---------------- monster berburu (terlihat di peta) ----------------
+MBY = {m['name']: m for m in MONSTERS}
+REC = {1: ('Lv 1+', (150, 255, 150)), 2: ('Lv 4+', (255, 235, 120)), 3: ('Lv 7+', (255, 170, 80)), 9: ('BOSS', (255, 90, 90))}
+HM = []
+for _nm, _x, _y, _r in HUNT_SPAWNS:
+    _m = MBY[_nm]; _h = 110 if _m['tier'] == 9 else max(36, min(100, int(_m['size'] * 0.36)))
+    HM.append(dict(m=_m, home=(_x, _y), pos=[float(_x), float(_y)], r=_r, h=_h, alive=True, respawn=0, imm=0, flip=False, tgt=None,
+                   wait=0, anim=random.randint(0, 3000), spd={1: 40, 2: 55, 3: 70, 9: 45}[_m['tier']], chase=False))
+_HC = {}
+
+
+def hm_img(e):
+    k = (e['m']['img'], e['h'], e['flip']); im = _HC.get(k)
+    if im is None:
+        base = pygame.image.load(A('mon', f"m_{e['m']['img']}.png")).convert_alpha()
+        sc = e['h'] / base.get_height(); im = pygame.transform.smoothscale(base, (max(1, int(base.get_width() * sc)), e['h']))
+        if e['flip']: im = pygame.transform.flip(im, True, False)
+        _HC[k] = im
+    return im
+
+
+def hm_ok(x, y):
+    r = pygame.Rect(int(x) - 6, int(y) - 3, 12, 6); return hunt_ok(r)
+
+
+def update_hunt(dt):
+    t = pygame.time.get_ticks()
+    for e in HM:
+        if not e['alive']:
+            if t >= e['respawn']: e['alive'] = True; e['pos'] = [float(e['home'][0]), float(e['home'][1])]; e['imm'] = t + 2000
+            continue
+        if mode != 'explore' or loc is not None: continue
+        x, y = e['pos']; dx, dy = P.x - x, P.y - y; dist = math.hypot(dx, dy)
+        aggro = dist < (110 if e['m']['tier'] == 9 else 190) and t > e['imm']
+        e['chase'] = aggro; e['anim'] += dt
+        if aggro:
+            sp = e['spd'] * 1.3 * min(dt, 50) / 1000; nx, ny = x + dx / dist * sp, y + dy / dist * sp
+            if hm_ok(nx, y): e['pos'][0] = nx
+            if hm_ok(e['pos'][0], ny): e['pos'][1] = ny
+            e['flip'] = dx > 0
+            if dist < 34: start_battle(ent=e); return
+            continue
+        if e['tgt'] is None:
+            if t < e['wait']: continue
+            hx, hy = e['home']; r = e['r']; tx, ty = hx + random.uniform(-r, r), hy + random.uniform(-r, r)
+            if hm_ok(tx, ty): e['tgt'] = (tx, ty)
+            else: e['wait'] = t + 300
+            continue
+        tx, ty = e['tgt']; ddx, ddy = tx - x, ty - y; dd = math.hypot(ddx, ddy)
+        if dd < 4: e['tgt'] = None; e['wait'] = t + random.randint(1200, 4000); continue
+        sp = e['spd'] * 0.6 * min(dt, 50) / 1000; nx, ny = x + ddx / dd * sp, y + ddy / dd * sp
+        if hm_ok(nx, ny): e['pos'] = [nx, ny]; e['flip'] = ddx > 0
+        else: e['tgt'] = None; e['wait'] = t + 500
+
+
+def enter_area(a, pos):
+    global area, door_lock
+    area = a; P.x, P.y = float(pos[0]), float(pos[1]); door_lock = pygame.time.get_ticks() + 900; reset_touch()
+    if a == 'hunt':
+        for e in HM: e['imm'] = pygame.time.get_ticks() + 1500
+    note("Hutan Berburu - monster terlihat di peta, hindari yang terlalu kuat!" if a == 'hunt' else "Kembali ke Eldenvale")
+
+
 # ---------------- interior ----------------
 INT_CACHE = {}
 
@@ -333,7 +432,7 @@ def build_interior(iid):
     npc = dict(name=nm, who=who, kind=kind, pos=[pos[0] - x0, pos[1] - y0], d='down', flip=False, moving=False, anim=0)
     c = dict(id=iid, s=s, surf=surf, ox=(W - surf.get_width()) // 2, oy=(H - surf.get_height()) // 2, floor=[sub(r) for r in d['floor']],
              solid=[sub(r) for r in d['solid']], exit=sub(d['exit']), spawn=(d['spawn'][0] - x0, d['spawn'][1] - y0),
-             hs=Sheet('hero', scale=HS * k), sh={who: Sheet(who, h=int(66 * k))}, npcs=[npc], k=k)
+             hs=Sheet('hero', scale=HS * k), sh={who: Sheet(who, h=int(70 * k))}, npcs=[npc], k=k)
     INT_CACHE[iid] = c; return c
 
 
@@ -395,14 +494,14 @@ def talk(n):
             if P.gold >= 10: P.gold -= 10; heal_full(); note("Istirahat nyenyak. HP & MP pulih (-10 G)")
             else: note("Emas tidak cukup.")
         say(nm, ["Penginapan Eldenvale! Menginap hanya 10 emas."], lambda: open_menu("Menginap 10 emas?", [("Ya, menginap", rest, None)]))
-    elif k == 'shop':
+    elif k in ('shop', 'camp'):
         def sell_all():
             tot = sum(ITEMS[i]['val'] * c for i, c in P.bag if ITEMS[i]['type'] == 'mat')
             if tot <= 0: note("Tidak ada bahan untuk dijual."); return
             P.bag[:] = [s for s in P.bag if ITEMS[s[0]]['type'] != 'mat']; P.gold += tot; note(f"Menjual bahan: +{tot} G")
         tot = sum(ITEMS[i]['val'] * c for i, c in P.bag if ITEMS[i]['type'] == 'mat')
-        say(nm, ["Ramuan segar, langsung dari kuali! Aku juga membeli bahan monster."],
-            lambda: open_shop("Toko Ramuan", SHOP_ORN, [(f"Jual semua bahan (+{tot} G)", sell_all, None)]))
+        say(nm, ["Ramuan segar, langsung dari kuali! Aku juga membeli bahan monster." if k == 'shop' else "Kemah pemburu! Beli ramuan di sini, dan jual bahan hasil buruanmu."],
+            lambda: open_shop("Toko Kemah" if k == 'camp' else "Toko Ramuan", SHOP_ORN, [(f"Jual semua bahan (+{tot} G)", sell_all, None)]))
     elif k == 'smith':
         def up():
             c = 50 * (P.wl + 1)
@@ -411,7 +510,7 @@ def talk(n):
         say(nm, ["Besi yang baik butuh api yang panas!"],
             lambda: open_shop("Pandai Besi", SHOP_BROM, [(f"Tempa senjata ({50*(P.wl+1)} G, ATK +3)", up, None)]))
     elif k == 'archer':
-        say(nm, ["Rumput selatan dan timur sering didatangi monster.", "Jalan tanah paling selatan lebih berbahaya. Pakai perlengkapan terbaik dan bawa ramuan!"])
+        say(nm, ["Rumput selatan dan timur sering didatangi monster kecil.", "Lewati gerbang selatan untuk ke Hutan Berburu. Monster di sana terlihat, tapi ada Vampir penjaga gua. Bawa ramuan!"])
     elif k == 'granny':
         say(nm, random.choice([["Selamat datang, nak. Mau teh hangat?", "Dulu desa ini jauh lebih sepi."],
                                ["Monster paling kuat menjatuhkan Orb Ungu. Harganya mahal sekali!"]]))
@@ -421,7 +520,7 @@ def talk(n):
 
 def interact():
     if loc is None:
-        for n in NPCS:
+        for n in anpcs():
             if math.hypot(n['pos'][0] - P.x, n['pos'][1] - P.y) < 70: talk(n); return
     else:
         for n in cur['npcs']:
@@ -443,11 +542,11 @@ def pick_monster(zone):
     return random.choice([m for m in MONSTERS if m['tier'] == t])
 
 
-def start_battle(zone):
+def start_battle(zone='near', ent=None):
     global battle, mode
-    m = pick_monster(zone); s = 1 + (P.lv - 1) * (0.08 if m['tier'] == 9 else 0.15)
-    snap = screen.copy(); snap.fill((70, 70, 90), special_flags=pygame.BLEND_RGB_SUB)
-    battle = dict(m=m, name=m['name'], hp=int(m['hp'] * s), maxhp=int(m['hp'] * s), atk=int(m['atk'] * s), xp=int(m['xp'] * s),
+    m = ent['m'] if ent else pick_monster(zone); s = 1 + (P.lv - 1) * (0.08 if m['tier'] == 9 else 0.15)
+    snap = screen.copy(); snap.fill((70, 70, 90), special_flags=pygame.BLEND_RGB_SUB); reset_touch()
+    battle = dict(m=m, ent=ent, name=m['name'], hp=int(m['hp'] * s), maxhp=int(m['hp'] * s), atk=int(m['atk'] * s), xp=int(m['xp'] * s),
                   gold=int(m['gold'] * s), snap=snap, state='cmd', idx=0, log=f"{m['name']} muncul!", t=0, shake=0, flash=0,
                   atk_until=0, items=[], iidx=0)
     mode = 'battle'
@@ -506,10 +605,16 @@ def update_battle():
         d = max(1, b['atk'] - tdef() + random.randint(-1, 2)); P.hp -= d; b['flash'] = 10
         if P.hp <= 0: P.hp = 0; blog(f"{b['name']} menyerang {d}! Kamu tumbang...", 'end_lose', 1500)
         else: blog(f"{b['name']} menyerang! {d} damage.", 'cmd', 600)
-    elif s in ('end_win', 'end_run'): mode = 'explore'; battle = None
+    elif s in ('end_win', 'end_run'):
+        e = b.get('ent'); t0 = pygame.time.get_ticks()
+        if e:
+            if s == 'end_win': e['alive'] = False; e['respawn'] = t0 + (120000 if e['m']['tier'] == 9 else 25000)
+            else: e['imm'] = t0 + 4000
+        mode = 'explore'; battle = None
     elif s == 'end_lose':
-        P.gold //= 2; P.hp, P.mp = P.maxhp // 2, P.maxmp // 2; P.x, P.y = 880.0, 560.0
-        mode = 'explore'; battle = None; note("Kamu pingsan & terbangun di alun-alun (emas -50%)")
+        P.gold //= 2; P.hp, P.mp = P.maxhp // 2, P.maxmp // 2
+        for e in HM: e['pos'] = [float(e['home'][0]), float(e['home'][1])]; e['imm'] = pygame.time.get_ticks() + 3000
+        mode = 'explore'; battle = None; enter_area('town', (880, 560)); note("Kamu pingsan & terbangun di alun-alun (emas -50%)")
 
 
 def bar(x, y, w, v, m, col, h=14):
@@ -520,9 +625,15 @@ def bar(x, y, w, v, m, col, h=14):
 def draw_battle():
     b = battle; t = pygame.time.get_ticks(); sh = S['shake']
     screen.blit(b['snap'], (0, 0))
-    pim = BAT_ATK if t < b['atk_until'] else BAT_IDLE
+    atk = t < b['atk_until']; pim = BAT_ATK if atk else BAT_IDLE
     ox = random.randint(-6, 6) if (b['flash'] and sh) else 0
-    screen.blit(pim, (170 + ox, 510 - pim.get_height() + int(math.sin(t / 280) * 4)))
+    if atk:
+        p = 1 - (b['atk_until'] - t) / 650; ox += int(math.sin(math.pi * p) * 520)
+        if 0.3 < p < 0.75:
+            ex = 900 + (random.randint(-6, 6) if sh else 0)
+            for a, wd in ((0, 8), (24, 5)): pygame.draw.line(screen, (255, 255, 255), (ex - 90 + a, 250), (ex + 70 + a, 430), wd)
+            pygame.draw.line(screen, (255, 230, 120), (ex - 70, 240), (ex + 90, 410), 4)
+    screen.blit(pim, (170 + ox, 510 - pim.get_height() + (0 if atk else int(math.sin(t / 280) * 4))))
     if b['hp'] > 0 or b['state'] == 'after':
         im = mon_img(b['m']); sx = random.randint(-8, 8) if (b['shake'] and sh) else 0
         screen.blit(im, (900 + sx - im.get_width() // 2, 440 - im.get_height() + int(math.sin(t / 250) * 6)))
@@ -777,9 +888,33 @@ def draw_touch():
     for nm, (bx, by, r) in TB.items(): screen.blit(T_BTN[nm], (bx - r - 2, by - r - 2))
 
 
-def to_logical(nx, ny):
+MAPMODE = 'logical'          # 'logical' = koordinat jari sudah relatif ke kanvas 1280x720; 'window' = relatif ke jendela (ada letterbox)
+_votes = {'logical': 0, 'window': 0}
+_lastf = None
+active_f = set()
+
+
+def f2l(nx, ny, mode_=None):
+    mode_ = mode_ or MAPMODE
+    if mode_ == 'logical': return nx * W, ny * H
     ww, wh = pygame.display.get_window_size(); sc = min(ww / W, wh / H)
     return (nx * ww - (ww - W * sc) / 2) / sc, (ny * wh - (wh - H * sc) / 2) / sc
+
+
+def calibrate(mx, my):
+    # sentuhan juga dikirim SDL sebagai klik mouse (sudah pasti benar); bandingkan dengan dua tafsiran koordinat jari
+    global MAPMODE
+    if not _lastf or pygame.time.get_ticks() - _lastf[0] > 300: return
+    errs = {}
+    for k in ('logical', 'window'):
+        x, y = f2l(_lastf[1], _lastf[2], k); errs[k] = math.hypot(x - mx, y - my)
+    if abs(errs['logical'] - errs['window']) < 8: return
+    _votes[min(errs, key=errs.get)] += 1
+    MAPMODE = 'logical' if _votes['logical'] >= _votes['window'] else 'window'
+
+
+def reset_touch():
+    fingers.clear(); joy_vec[0] = joy_vec[1] = 0.0
 
 
 def update_joy(x, y):
@@ -796,11 +931,11 @@ def menu_rects():
 def press(fid, x, y):
     if mode == 'explore':
         for nm, r in HB.items():
-            if r.collidepoint(x, y): handle_key({'TAS': pygame.K_i, 'SIMPAN': pygame.K_F5, 'MUAT': pygame.K_F9}[nm]); return
+            if r.inflate(16, 16).collidepoint(x, y): handle_key({'TAS': pygame.K_i, 'SIMPAN': pygame.K_F5, 'MUAT': pygame.K_F9}[nm]); return
         if show_touch():
             for nm, (bx, by, br) in TB.items():
-                if math.hypot(x - bx, y - by) <= br + 12: handle_key(pygame.K_z if nm == 'A' else pygame.K_p); return
-            if x < 480 and y > 280: fingers[fid] = 'joy'; update_joy(x, y)
+                if math.hypot(x - bx, y - by) <= br + 24: handle_key(pygame.K_z if nm == 'A' else pygame.K_p); return
+            if x < 520 and y > 240: fingers[fid] = 'joy'; update_joy(x, y)
     elif mode == 'dialog': handle_key(pygame.K_z)
     elif mode == 'menu':
         for i, r in enumerate(menu_rects()[1]):
@@ -871,41 +1006,58 @@ def handle_key(k):
 def save():
     try:
         d = {k: getattr(P, k) for k in ['x', 'y', 'lv', 'xp', 'gold', 'hp', 'maxhp', 'mp', 'maxmp', 'atk', 'df', 'wl', 'slimes', 'quest', 'bag', 'eq']}
-        json.dump(d, open(SAVE, 'w')); note("Game disimpan.")
+        d['area'] = area; json.dump(d, open(SAVE, 'w')); note("Game disimpan.")
     except Exception: note("Gagal menyimpan.")
 
 
 def loadgame():
-    global loc, cur
+    global loc, cur, area
     if not os.path.exists(SAVE): note("Belum ada save."); return
     try:
         d = json.load(open(SAVE))
         for k, v in d.items():
             if k in ('pot', 'eth'): continue
+            if k == 'area': area = v if v in ('town', 'hunt') else 'town'; continue
             setattr(P, k, v)
         if 'pot' in d: add_item('potion_hp', d['pot'])
         if 'eth' in d: add_item('potion_mp', d['eth'])
         P.bag = [s for s in P.bag if s[0] in ITEMS]; P.eq = {s: (P.eq.get(s) if P.eq.get(s) in ITEMS else None) for s in SLOT_NAME}
-        loc = cur = None; note("Game dimuat.")
+        loc = cur = None; reset_touch(); note("Game dimuat.")
     except Exception: note("Save rusak.")
 
 
 # ---------------- gambar dunia ----------------
 def draw_outdoor():
-    cx = max(0, min(MW - W, int(P.x - W / 2))); cy = max(0, min(MH - H, int(P.y - H / 2)))
-    screen.blit(MAP, (0, 0), (cx, cy, W, H))
-    ents = [(n['pos'][1], SHEETS[n['who']].get(n['d'], n['anim'] // 190, n['flip'], n['moving']), n['pos'], n['name']) for n in NPCS]
-    ents.append((P.y, hero.get(P.d, P.step, P.flip, P.moving), (P.x, P.y), None))
-    for _, im, (x, y), nm in sorted(ents, key=lambda e: e[0]):
+    mp, mw, mh = (MAP, MW, MH) if area == 'town' else (HMAP, HW, HH)
+    cx = max(0, min(mw - W, int(P.x - W / 2))); cy = max(0, min(mh - H, int(P.y - H / 2)))
+    screen.blit(mp, (0, 0), (cx, cy, W, H)); t = pygame.time.get_ticks()
+    ents = []
+    for n in anpcs():
+        im = sheet_for(n['who']).get(n['d'], n['anim'] // 200, n['flip'], n['moving'])
+        ents.append((n['pos'][1], im, n['pos'], n['name'], -int(abs(math.sin(n['anim'] / 110)) * 3) if n['moving'] else 0, None))
+    if area == 'hunt':
+        for e in HM:
+            if e['alive']: ents.append((e['pos'][1], hm_img(e), e['pos'], None, -int(abs(math.sin(e['anim'] / 140)) * 4), e))
+    ents.append((P.y, hero.get(P.d, P.step, P.flip, P.moving), (P.x, P.y), None, 0, None))
+    for _, im, (x, y), nm, bob, e in sorted(ents, key=lambda q: q[0]):
         sx, sy = int(x - cx), int(y - cy)
+        if sx < -150 or sx > W + 150 or sy < -150 or sy > H + 150: continue
         if S['shadows']: screen.blit(SHADOW, (sx - 20, sy - 9))
-        screen.blit(im, (sx - im.get_width() // 2, sy - im.get_height() + 6))
-        if nm and S['names']:
-            lab = rt(nm, f_s, (255, 240, 180)); screen.blit(rt(nm, f_s, (0, 0, 0)), (sx - lab.get_width() // 2 + 1, sy - im.get_height() - 11)); screen.blit(lab, (sx - lab.get_width() // 2, sy - im.get_height() - 12))
+        screen.blit(im, (sx - im.get_width() // 2, sy - im.get_height() + 6 + bob))
+        top = sy - im.get_height() + bob
+        if e:
+            lab, col = REC[e['m']['tier']]; l = rt(f"{e['m']['name']}  {lab}", f_xs, col)
+            screen.blit(rt(f"{e['m']['name']}  {lab}", f_xs, (0, 0, 0)), (sx - l.get_width() // 2 + 1, top - 15)); screen.blit(l, (sx - l.get_width() // 2, top - 16))
+            if e['chase']: screen.blit(rt("!", f_m, (255, 80, 80)), (sx - 4, top - 38))
+        elif nm and S['names']:
+            lab = rt(nm, f_s, (255, 240, 180)); screen.blit(rt(nm, f_s, (0, 0, 0)), (sx - lab.get_width() // 2 + 1, top - 11)); screen.blit(lab, (sx - lab.get_width() // 2, top - 12))
     if debug:
-        for b in BLOCK: pygame.draw.rect(screen, (255, 0, 0), b.move(-cx, -cy), 2)
-        for b, _ in WILD: pygame.draw.rect(screen, (255, 255, 0), b.move(-cx, -cy), 2)
-        for b in DOORR.values(): pygame.draw.rect(screen, (0, 255, 255), b.move(-cx, -cy), 2)
+        if area == 'town':
+            for b in BLOCK: pygame.draw.rect(screen, (255, 0, 0), b.move(-cx, -cy), 2)
+            for b, _ in WILD: pygame.draw.rect(screen, (255, 255, 0), b.move(-cx, -cy), 2)
+            for b in DOORR.values(): pygame.draw.rect(screen, (0, 255, 255), b.move(-cx, -cy), 2)
+            pygame.draw.rect(screen, (0, 255, 255), GATE.move(-cx, -cy), 2)
+        else: pygame.draw.rect(screen, (0, 255, 255), HEXIT.move(-cx, -cy), 2)
 
 
 def draw_interior():
@@ -965,28 +1117,38 @@ def update_explore(dt):
     dy = (kk[pygame.K_DOWN] or kk[pygame.K_s]) - (kk[pygame.K_UP] or kk[pygame.K_w])
     if abs(joy_vec[0]) > 0.3: dx = 1 if joy_vec[0] > 0 else -1
     if abs(joy_vec[1]) > 0.3: dy = 1 if joy_vec[1] > 0 else -1
-    if not (dx or dy): P.step = 0; P.moving = False; return
-    sp = 275 * S['speed'] * min(dt, 50) / 1000 * (0.7071 if dx and dy else 1)
-    if abs(dx) >= abs(dy) and dx: P.d, P.flip = 'side', dx < 0
-    elif dy: P.d, P.flip = ('down' if dy > 0 else 'up'), False
-    walk_t += dt; P.step = int(walk_t // 105); P.moving = True
-    if loc is None:
-        nx, ny = P.x + dx * sp, P.y + dy * sp
-        if not blocked(nx, P.y): P.x = nx
-        if not blocked(P.x, ny): P.y = ny
-        P.dist += sp; r = feet(P.x, P.y)
-        if pygame.time.get_ticks() > door_lock:
-            for iid, dr in DOORR.items():
-                if r.colliderect(dr): enter(iid); return
-        for w, z in WILD:
-            if r.colliderect(w) and P.dist > random.randint(260, 520): P.dist = 0; start_battle(z); return
+    if not (dx or dy): P.step = 0; P.moving = False; walk_t = 0
     else:
-        sp = sp * 0.85 / cur['s']; nx, ny = P.ix + dx * sp, P.iy + dy * sp
-        if int_ok(nx, P.iy): P.ix = nx
-        if int_ok(P.ix, ny): P.iy = ny
+        sp = 275 * S['speed'] * min(dt, 50) / 1000 * (0.7071 if dx and dy else 1); moved = False
+        if abs(dx) >= abs(dy) and dx: P.d, P.flip = 'side', dx < 0
+        elif dy: P.d, P.flip = ('down' if dy > 0 else 'up'), False
+        if loc is None:
+            nx, ny = P.x + dx * sp, P.y + dy * sp
+            if not blocked(nx, P.y): P.x = nx; moved = True
+            if not blocked(P.x, ny): P.y = ny; moved = True
+            if moved: P.dist += sp
+        else:
+            sp = sp * 0.85 / cur['s']; nx, ny = P.ix + dx * sp, P.iy + dy * sp
+            if int_ok(nx, P.iy): P.ix = nx; moved = True
+            if int_ok(P.ix, ny): P.iy = ny; moved = True
+        if moved: walk_t += dt; P.step = int(walk_t // 95); P.moving = True
+        else: P.step = 0; P.moving = False
+    now = pygame.time.get_ticks()
+    if loc is None:
+        r = feet(P.x, P.y)
+        if now > door_lock:
+            if area == 'town':
+                for iid, dr in DOORR.items():
+                    if r.colliderect(dr): enter(iid); return
+                if r.colliderect(GATE): enter_area('hunt', HENTRY); return
+            elif r.colliderect(HEXIT): enter_area('town', GATE_OUT); return
+        if area == 'town' and P.moving:
+            for w, z in WILD:
+                if r.colliderect(w) and P.dist > random.randint(260, 520): P.dist = 0; start_battle(z); return
+    else:
         for n in cur['npcs']:
             if math.hypot(n['pos'][0] - P.ix, n['pos'][1] - P.iy) < 110: face(n, P.ix, P.iy)
-        if ifeet(P.ix, P.iy).colliderect(cur['exit']) and pygame.time.get_ticks() > door_lock: leave()
+        if ifeet(P.ix, P.iy).colliderect(cur['exit']) and now > door_lock: leave()
 
 
 # ---------------- loop ----------------
@@ -996,16 +1158,23 @@ while True:
     for e in pygame.event.get():
         if e.type == pygame.QUIT: pygame.quit(); sys.exit()
         elif e.type == pygame.KEYDOWN: handle_key(e.key)
-        elif e.type == pygame.FINGERDOWN: touch_seen = True; press(e.finger_id, *to_logical(e.x, e.y))
-        elif e.type == pygame.FINGERMOTION: move(e.finger_id, *to_logical(e.x, e.y))
-        elif e.type == pygame.FINGERUP: release(e.finger_id)
+        elif e.type == pygame.FINGERDOWN:
+            touch_seen = True; active_f.add(e.finger_id); _lastf = (pygame.time.get_ticks(), e.x, e.y); press(e.finger_id, *f2l(e.x, e.y))
+        elif e.type == pygame.FINGERMOTION: move(e.finger_id, *f2l(e.x, e.y))
+        elif e.type == pygame.FINGERUP:
+            active_f.discard(e.finger_id); release(e.finger_id)
+            if not active_f: reset_touch()
+        elif e.type in (pygame.WINDOWFOCUSLOST, pygame.APP_WILLENTERBACKGROUND, pygame.APP_DIDENTERBACKGROUND): active_f.clear(); reset_touch()
+        elif ANDROID and e.type == pygame.MOUSEBUTTONDOWN: calibrate(*e.pos)
         elif not ANDROID and e.type == pygame.MOUSEBUTTONDOWN and e.button == 1: press('m', *e.pos)
         elif not ANDROID and e.type == pygame.MOUSEMOTION and e.buttons[0]: move('m', *e.pos)
         elif not ANDROID and e.type == pygame.MOUSEBUTTONUP and e.button == 1: release('m')
     if mode == 'explore': update_explore(dt)
     elif mode == 'battle': update_battle()
-    if mode != 'explore': P.moving = False
-    if loc is None: update_npcs(dt)
+    if mode != 'explore': P.moving = False; reset_touch() if (fingers or joy_vec[0] or joy_vec[1]) and mode != 'inv' else None
+    if loc is None:
+        update_npcs(dt)
+        if area == 'hunt': update_hunt(dt)
 
     if mode == 'battle': draw_battle()
     elif mode == 'inv': draw_inv()
