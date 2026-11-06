@@ -5,12 +5,13 @@ Bagian berkas:  1 inti & helper gambar | 2 aset | 3 dunia & state | 4 logika gam
                 5 layar (title, HUD, dialog, menu, tas, battle) | 6 input | 7 loop utama
 """
 import os, sys, json, math, random, copy, traceback, time as _pytime
+from collections import deque
 
 os.environ.setdefault('SDL_ANDROID_TRAP_BACK_BUTTON', '1')    # tombol Back tidak menutup aplikasi
 import pygame
 from data import *
 
-VERSION = '1.1'
+VERSION = '1.2'
 BASE = os.path.dirname(os.path.abspath(__file__))
 A = lambda *p: os.path.join(BASE, 'assets', *p)
 ANDROID = 'ANDROID_ARGUMENT' in os.environ or 'ANDROID_PRIVATE' in os.environ
@@ -512,10 +513,10 @@ def load_world():
         (0, 0, 380, 245), (1340, 0, 100, 330), (1440, 0, 150, 270),
         (0, 790, 800, 200), (930, 830, 742, 111), (0, 920, MW, 30),
         (470, 115, 260, 150), (785, 50, 225, 210), (1075, 175, 185, 135), (390, 300, 175, 175),
-        (1170, 360, 160, 125), (365, 480, 110, 150), (340, 585, 470, 85), (830, 355, 120, 100),
+        (1170, 360, 160, 125), (830, 355, 120, 100),
         (1040, 612, 345, 100), (1400, 330, 70, 215)]]
-    WILD = [(pygame.Rect(*r), z) for r, z in [((60, 590, 260, 120), 'near'), ((900, 720, 520, 95), 'near'), ((330, 700, 470, 90), 'near'),
-                                               ((1400, 560, 70, 150), 'near'), ((805, 790, 125, 125), 'far')]]
+    BLOCK += [pygame.Rect(*r) for r in TOWN_SOLID]   # v1.2: kursi, pagar, pohon, plang, kincir
+    WILD = []   # v1.2: tidak ada battle mendadak di desa; monster hanya di Hutan Berburu
     DOORR = {k_: pygame.Rect(*v_['trig']) for k_, v_ in DOORS.items()}
 
 
@@ -580,14 +581,14 @@ def load_ui():
 # ============================================================ 3. DUNIA & STATE
 GATE, GATE_OUT = pygame.Rect(820, 890, 100, 24), (870, 850)
 HEXIT, HENTRY = pygame.Rect(660, 892, 52, 24), (696, 830)
-DOOR_NAME = {'inn': 'Penginapan', 'church': 'Gereja', 'potion': 'Toko Ramuan', 'smith': 'Pandai Besi', 'green': 'Rumah Nenek Wren'}
+DOOR_NAME = {'inn': 'Penginapan', 'church': 'Gereja', 'potion': 'Toko Ramuan', 'smith': 'Pandai Besi', 'green': 'Rumah Nenek Wren', 'windmill': 'Guild Petualang'}
 NPCS = [
     dict(name="Sir Aldric", who="n05", pos=(800, 330), kind="quest", r=40, still=True),
     dict(name="Mira", who="n27", pos=(700, 565), kind="girl", r=150),
     dict(name="Cale si Pedagang", who="n29", pos=(1010, 470), kind="chat", r=110,
          lines=["Barang dagangan terbaik ada di toko Orn dan Brom!", "Monster di Hutan Berburu menjatuhkan bahan yang laku mahal."]),
-    dict(name="Anya", who="n19", pos=(560, 545), kind="chat", r=90,
-         lines=["Aku pernah masuk gereja. Di dalamnya megah sekali!", "Ssst, kata orang ada Raja Slime di rumput luar desa."]),
+    dict(name="Anya", who="n19", pos=(585, 500), kind="chat", r=90,
+         lines=["Aku pernah masuk gereja. Di dalamnya megah sekali!", "Ssst, kata orang ada Raja Slime di padang hijau Hutan Berburu."]),
     dict(name="Fenn si Pemanah", who="n14", pos=(1120, 520), kind="archer", r=130),
     dict(name="Kesatria Ines", who="n18", pos=(1000, 330), kind="chat", r=100,
          lines=["Aku berpatroli di sini setiap hari.", "Monster di Hutan Berburu bisa dilihat dari jauh. Hindari yang terlalu kuat!"]),
@@ -606,7 +607,9 @@ HNPCS = [dict(name="Pemburu Rhea", who="n15", pos=(1345, 415), kind="camp", r=0,
 area = 'town'
 
 
-def anpcs(): return NPCS if area == 'town' else HNPCS
+def anpcs():
+    if area != 'town': return HNPCS
+    return [] if is_night() else NPCS   # v1.2: malam, penduduk tidur di penginapan
 
 
 def init_npc(n):
@@ -628,12 +631,15 @@ class P:
     quest = 0
     bag = []
     eq = {}
+    tm = 420.0
+    day = 1
+    gq = {}
 
 
 DEFAULT = dict(x=880.0, y=560.0, lv=1, xp=0, gold=60, hp=60, maxhp=60, mp=20, maxmp=20, atk=9, df=3, wl=0, slimes=0, quest=0,
-               bag=[['potion_hp', 3], ['potion_mp', 1], ['bread', 2], ['dagger', 1]])
+               bag=[['potion_hp', 3], ['potion_mp', 1], ['bread', 2], ['dagger', 1]], tm=420.0, day=1, gq={})
 MAXBAG = 30
-SAVE_KEYS = ['x', 'y', 'lv', 'xp', 'gold', 'hp', 'maxhp', 'mp', 'maxmp', 'atk', 'df', 'wl', 'slimes', 'quest', 'bag', 'eq']
+SAVE_KEYS = ['x', 'y', 'lv', 'xp', 'gold', 'hp', 'maxhp', 'mp', 'maxmp', 'atk', 'df', 'wl', 'slimes', 'quest', 'bag', 'eq', 'tm', 'day', 'gq']
 
 
 def need(lv): return 20 + lv * lv * 8
@@ -825,6 +831,31 @@ def hm_img(e):
 def hm_ok(x, y): return hunt_ok(pygame.Rect(int(x) - 6, int(y) - 3, 12, 6))
 
 
+HCELL = 16
+
+
+def hm_walk(i, j): return 0 <= i < HGW and 0 <= j < HGH and HGRID[j][i]
+
+
+def hm_path(s_, g_):
+    """Jalur BFS 8 arah di grid masker hutan dari sel s_ ke sel g_ (tanpa memotong sudut tembok). None jika tak terjangkau."""
+    if s_ == g_: return []
+    if not (hm_walk(*s_) and hm_walk(*g_)): return None
+    prev = {s_: None}; q = deque([s_])
+    while q:
+        c = q.popleft()
+        if c == g_: break
+        for di, dj in ((1, 0), (-1, 0), (0, 1), (0, -1), (1, 1), (1, -1), (-1, 1), (-1, -1)):
+            nb = (c[0] + di, c[1] + dj)
+            if nb in prev or not hm_walk(*nb): continue
+            if di and dj and not (hm_walk(c[0] + di, c[1]) and hm_walk(c[0], c[1] + dj)): continue
+            prev[nb] = c; q.append(nb)
+    if g_ not in prev: return None
+    path, c = [], g_
+    while c != s_: path.append(c); c = prev[c]
+    path.reverse(); return path
+
+
 def update_hunt(dt):
     t = pygame.time.get_ticks()
     for e in HM:
@@ -833,15 +864,28 @@ def update_hunt(dt):
             continue
         if mode != 'explore' or loc is not None or area != 'hunt': continue
         x, y = e['pos']; dx, dy = P.x - x, P.y - y; dist = max(0.001, math.hypot(dx, dy))
-        aggro = dist < (110 if e['m']['tier'] == 9 else 190) and t > e['imm']
-        e['chase'] = aggro; e['anim'] += dt
-        if aggro:
-            sp = e['spd'] * 1.3 * min(dt, 50) / 1000; nx, ny = x + dx / dist * sp, y + dy / dist * sp
-            if hm_ok(nx, y): e['pos'][0] = nx
-            if hm_ok(e['pos'][0], ny): e['pos'][1] = ny
-            e['flip'] = dx > 0
+        boss = e['m']['tier'] == 9
+        # mulai mengejar saat pemain dekat; berhenti hanya setelah pemain cukup jauh (histeresis)
+        go = (dist < (150 if boss else 260)) if e['chase'] else (dist < (110 if boss else 190))
+        go = go and t > e['imm']
+        e['chase'] = go; e['anim'] += dt
+        if go:
             if dist < 34: start_battle(ent=e); return
+            if t >= e.get('pt', 0):   # jalur dihitung ulang tiap 400 ms, mengikuti tikungan & tembok
+                e['path'] = hm_path((int(x) // HCELL, int(y) // HCELL), (int(P.x) // HCELL, int(P.y) // HCELL)) or []
+                e['pt'] = t + 400
+            path = e['path']
+            while path and math.hypot(path[0][0] * HCELL + 8 - x, path[0][1] * HCELL + 8 - y) < 4: path.pop(0)
+            tx, ty = (path[0][0] * HCELL + 8, path[0][1] * HCELL + 8) if path else (P.x, P.y)
+            ddx, ddy = tx - x, ty - y; dd = max(0.001, math.hypot(ddx, ddy))
+            sp = e['spd'] * 1.3 * min(dt, 50) / 1000; nx, ny = x + ddx / dd * sp, y + ddy / dd * sp
+            moved = False
+            if hm_ok(nx, y): e['pos'][0] = nx; moved = True
+            if hm_ok(e['pos'][0], ny): e['pos'][1] = ny; moved = True
+            if not moved: e['pt'] = 0   # terhalang: cari jalur baru di frame berikutnya
+            if abs(ddx) > 0.5: e['flip'] = ddx > 0
             continue
+        e['path'] = None
         if e['tgt'] is None:
             if t < e['wait']: continue
             hx, hy = e['home']; r = e['r']; tx, ty = hx + random.uniform(-r, r), hy + random.uniform(-r, r)
@@ -879,6 +923,11 @@ def build_interior(iid):
     c = dict(id=iid, s=s, surf=surf, ox=(W - surf.get_width()) // 2, oy=(H - surf.get_height()) // 2, floor=[sub(r) for r in d['floor']],
              solid=[sub(r) for r in d['solid']], exit=sub(d['exit']), spawn=(d['spawn'][0] - x0, d['spawn'][1] - y0),
              hs=Sheet('hero', scale=HS * k), sh={who: Sheet(who, h=int(70 * k))}, npcs=[npc], k=k)
+    c['sleep'] = []
+    if iid == 'inn':   # v1.2: penduduk tidur di penginapan saat malam (posisi di SLEEP_SPOTS)
+        for n_, (gx, gy) in zip(NPCS, SLEEP_SPOTS):
+            sh_ = Sheet(n_['who'], h=int(70 * k))
+            c['sleep'].append(dict(im=pygame.transform.rotate(sh_.get('down', 0, False, False), 90), pos=(gx - x0, gy - y0)))
     INT_CACHE[iid] = c; return c
 
 
@@ -906,6 +955,81 @@ def leave():
     P.x, P.y = DOORS[loc]['out']; loc = None; cur = None; P.d = 'down'; door_lock = pygame.time.get_ticks() + 700; reset_touch()
 
 
+# ---------------- waktu, malam & guild (v1.2) ----------------
+MS_PER_MIN = 1500                 # 1 menit game = 1,5 detik nyata (1 hari ~ 36 menit)
+NIGHT_START, NIGHT_END = 21 * 60, 5 * 60
+
+
+def is_night(): return P.tm >= NIGHT_START or P.tm < NIGHT_END
+
+
+def night_level():
+    t = P.tm
+    if 19 * 60 <= t < 21 * 60: return 0.6 * (t - 19 * 60) / 120.0
+    if t >= 21 * 60 or t < 4 * 60 + 30: return 0.6
+    if 4 * 60 + 30 <= t < 6 * 60: return 0.6 * (6 * 60 - t) / 90.0
+    return 0.0
+
+
+def clock_str():
+    m = int(P.tm); h, mn = (m // 60) % 24, m % 60
+    ph = 'Malam' if (m < 5 * 60 or m >= 19 * 60) else 'Pagi' if m < 11 * 60 else 'Siang' if m < 15 * 60 else 'Sore'
+    return f"Hari {P.day}  {h:02d}:{mn:02d} ({ph})"
+
+
+def on_night():
+    note("Malam tiba. Penduduk kembali ke penginapan.")
+    for n in NPCS: n['pos'] = list(n['home']); n['tgt'] = None; n['moving'] = False
+
+
+def on_morning(): note("Pagi tiba. Penduduk kembali ke alun-alun.")
+
+
+def gq_get(qid): return P.gq.setdefault(qid, dict(st='new', n=0))
+
+
+def gq_prog(q):
+    if q['kind'] == 'item': return min(q['need'], count(q['match']))
+    return min(q['need'], gq_get(q['id'])['n'])
+
+
+def gq_status(q):
+    st = gq_get(q['id'])['st']
+    if st == 'done': return 'Selesai'
+    if st == 'new': return 'Baru'
+    p = gq_prog(q)
+    return 'Siap!' if p >= q['need'] else f"{p}/{q['need']}"
+
+
+def quest_lines():
+    out = [quest_text()] if quest_text() else []
+    for q in GQ:
+        if gq_get(q['id'])['st'] == 'active': out.append(f"{q['name']}: {gq_prog(q)}/{q['need']}")
+    return out
+
+
+def guild_board():
+    open_menu("Papan Misi Guild", [mi(q['name'], lambda q=q: guild_act(q), None, gq_status(q)) for q in GQ])
+
+
+def guild_act(q):
+    st = gq_get(q['id'])
+    if st['st'] == 'done': note("Misi ini sudah selesai."); return
+    if st['st'] == 'new':
+        st['st'] = 'active'; st['n'] = 0; close_menu(); note(f"Misi diterima: {q['name']}"); return
+    if gq_prog(q) < q['need']:
+        close_menu(); note(f"{q['name']}: {gq_prog(q)}/{q['need']}. {q['desc']}"); return
+    st['st'] = 'done'
+    if q['kind'] == 'item': remove_item(q['match'], q['need'])
+    msgs = gain(q['xp'], q['gold'])
+    rew = f"{q['gold']} emas, {q['xp']} XP"
+    if q.get('item'):
+        if add_item(q['item']): rew += f", {ITEMS[q['item']]['name']}"
+        else: rew += " (tas penuh, hadiah item hilang)"
+    close_menu()
+    say(GUILD_MASTER, [f"Misi \"{q['name']}\" selesai! Kerja bagus.", f"Hadiahmu: {rew}."], lambda: [note(m) for m in msgs])
+
+
 # ---------------- NPC logika ----------------
 def open_shop(title_, stock, extra=()):
     items = []
@@ -923,13 +1047,13 @@ def talk(n):
     face(n, px, py); k, nm = n['kind'], n['name']
     if k == 'quest':
         if P.quest == 0:
-            say(nm, ["Selamat datang di Eldenvale, pengelana.", "Slime di rumput luar desa makin banyak dan mengganggu ladang.",
-                     "Kalahkan 5 slime di rumput selatan atau timur. Hadiahnya 120 emas!"], lambda: setattr(P, 'quest', 1))
+            say(nm, ["Selamat datang di Eldenvale, pengelana.", "Slime di Hutan Berburu makin banyak dan mengganggu ladang desa.",
+                     "Kalahkan 5 slime di Hutan Berburu (lewat gerbang selatan). Hadiahnya 120 emas!"], lambda: setattr(P, 'quest', 1))
         elif P.quest == 1:
             if P.slimes >= 5:
                 P.quest = 2; say(nm, ["Kau berhasil! Desa ini berutang budi padamu.", "Ini hadiahmu: 120 emas, 40 XP, dan sebuah Elixir."],
                                  lambda: ([note(m) for m in gain(40, 120)], add_item('elixir'), setattr(P, 'quest', 3)))
-            else: say(nm, [f"Slime terkalahkan: {P.slimes}/5. Cari di rumput luar desa."])
+            else: say(nm, [f"Slime terkalahkan: {P.slimes}/5. Cari di Hutan Berburu."])
         else: say(nm, ["Terima kasih sudah menjaga desa. Hati-hati dengan Raja Slime dan monster di jalan selatan."])
     elif k == 'priest':
         say(nm, ["Cahaya melindungimu. Biarkan aku menyembuhkan lukamu."], lambda: (heal_full(), note("HP & MP pulih penuh!")))
@@ -938,7 +1062,19 @@ def talk(n):
             if P.gold >= 10: P.gold -= 10; heal_full(); note("Istirahat nyenyak. HP & MP pulih (-10 G)")
             else: note("Emas tidak cukup.")
             close_menu()
-        say(nm, ["Penginapan Eldenvale! Menginap hanya 10 emas."], lambda: open_menu("Menginap?", [mi("Ya, menginap", rest, None, "10 G", 10)]))
+        def sleep_morning():   # v1.2: tidur malam sampai pagi (waktu melompat ke 06:00)
+            if P.gold < 10: note("Emas tidak cukup."); close_menu(); return
+            P.gold -= 10; heal_full()
+            if P.tm >= 12 * 60: P.day += 1
+            P.tm = 6 * 60.0
+            close_menu()
+            say("Penginapan", ["Kau berbaring dan tertidur lelap...", "Saat terbangun, pagi sudah tiba. HP & MP pulih penuh."])
+        if is_night():
+            say(nm, ["Semua tamu sudah terlelap. Mau menginap sampai pagi?"], lambda: open_menu("Menginap?", [mi("Tidur sampai pagi", sleep_morning, None, "10 G", 10)]))
+        else:
+            say(nm, ["Penginapan Eldenvale! Menginap hanya 10 emas."], lambda: open_menu("Menginap?", [mi("Ya, menginap", rest, None, "10 G", 10)]))
+    elif k == 'guild':
+        say(nm, ["Selamat datang di Guild Petualang Eldenvale!", "Ambil misi dari papan, selesaikan di Hutan Berburu, lalu serahkan di sini."], guild_board)
     elif k in ('shop', 'camp'):
         def sell_all():
             tot = sum(ITEMS[i]['val'] * c for i, c in P.bag if ITEMS[i]['type'] == 'mat')
@@ -956,7 +1092,7 @@ def talk(n):
         say(nm, ["Besi yang baik butuh api yang panas!"],
             lambda: open_shop("Pandai Besi", SHOP_BROM, [mi(f"Tempa senjata (ATK +3)", up, None, f"{50 * (P.wl + 1)} G", 50 * (P.wl + 1))]))
     elif k == 'archer':
-        say(nm, ["Rumput selatan dan timur sering didatangi monster kecil.", "Lewati gerbang selatan untuk ke Hutan Berburu. Monster di sana terlihat, tapi ada Vampir penjaga gua. Bawa ramuan!"])
+        say(nm, ["Monster kecil sekarang hanya ada di Hutan Berburu, lewat gerbang selatan.", "Lewati gerbang selatan untuk ke Hutan Berburu. Monster di sana terlihat, tapi ada Vampir penjaga gua. Bawa ramuan!"])
     elif k == 'granny':
         say(nm, random.choice([["Selamat datang, nak. Mau teh hangat?", "Dulu desa ini jauh lebih sepi."],
                                ["Monster paling kuat menjatuhkan Orb Ungu. Harganya mahal sekali!"]]))
@@ -1063,6 +1199,8 @@ def update_battle():
     if s == 'after':
         if b['hp'] <= 0:
             if 'Slime' in b['name'] and P.quest == 1: P.slimes += 1
+            for q in GQ:
+                if q['kind'] == 'kill' and q['match'] in b['name'] and gq_get(q['id'])['st'] == 'active': gq_get(q['id'])['n'] += 1
             msgs = gain(b['xp'], b['gold']); got = []
             for iid, ch in b['m']['drops']:
                 if random.random() < ch:
@@ -1212,7 +1350,7 @@ def draw_touch():
 
 # ---------------- HUD ----------------
 def quest_text():
-    return {0: "Bicara dengan Sir Aldric di dekat gereja", 1: f"Kalahkan Slime {min(P.slimes, 5)}/5 di rumput luar desa",
+    return {0: "Bicara dengan Sir Aldric di dekat gereja", 1: f"Kalahkan Slime {min(P.slimes, 5)}/5 di Hutan Berburu",
             2: "Lapor ke Sir Aldric", 3: "Semua misi selesai"}.get(P.quest, "")
 
 
@@ -1232,8 +1370,11 @@ def draw_hud():
     g = HUD_G; panel(g, 208, 14)
     screen.blit(icon_s('coin', 24, C_GOLD), (g.x + 12, g.centery - 12)); txt(str(P.gold), g.x + 44, g.centery - F_MB.get_height() // 2, F_MB, C_GOLD)
     txt(f"Tas {len(P.bag)}/{MAXBAG}", g.right - 12, g.centery - F_XS.get_height() // 2, F_XS, C_MUTE, False, 'r')
-    q = HUD_Q; lines = wrap(quest_text(), F_S, q.w - 28)[:3]; q.h = 36 + len(lines) * 19; panel(q, 208, 14)
+    q = HUD_Q; lines = []
+    for _t in quest_lines(): lines += wrap(_t, F_S, q.w - 28)
+    lines = lines[:4]; q.h = 36 + len(lines) * 19; panel(q, 208, 14)
     screen.blit(icon_s('diamond', 14, C_GOLD), (q.x + 12, q.y + 10)); txt("MISI", q.x + 32, q.y + 5, F_XS, C_GOLD, False)
+    txt(clock_str(), q.right - 12, q.y + 5, F_XS, C_MUTE, False, 'r')
     for i, l in enumerate(lines): txt(l, q.x + 14, q.y + 28 + i * 19, F_S, C_TEXT, False if i else True)
     if not ANDROID and not show_touch():
         t = "WASD / Panah: jalan    Z / Spasi: bicara    I: tas    P: ramuan    F5: simpan"
@@ -1413,6 +1554,15 @@ def cam(mw, mh, px, py):
     return cx, cy, ox, oy
 
 
+_NV = {}
+
+
+def night_veil(lv):
+    v = _NV.get((W, H))
+    if v is None: v = _NV[(W, H)] = pygame.Surface((W, H), pygame.SRCALPHA)
+    v.fill((10, 16, 52, int(lv * 170))); screen.blit(v, (0, 0))
+
+
 def draw_outdoor():
     mp, mw, mh = (MAP, MW, MH) if area == 'town' else (HMAP, HW, HH)
     cx, cy, ox, oy = cam(mw, mh, P.x, P.y)
@@ -1442,6 +1592,8 @@ def draw_outdoor():
         elif n and S['names']:
             tg = tag(n['name'], (255, 240, 190)); screen.blit(tg, (sx - tg.get_width() // 2, top - 22))
             if n is near: screen.blit(icon_s('down', 20, C_GOLD), (sx - 10, top - 44 + int(3 * math.sin(t / 160.0))))
+    lv = night_level()
+    if lv > 0.005: night_veil(lv)
     if debug:
         if area == 'town':
             for b in BLOCK: pygame.draw.rect(screen, (255, 0, 0), b.move(-cx + ox, -cy + oy), 2)
@@ -1453,6 +1605,11 @@ def draw_outdoor():
 
 def draw_interior():
     c = cur; s = c['s']; screen.fill((4, 6, 14)); screen.blit(c['surf'], (c['ox'], c['oy']))
+    if is_night():
+        for sl in c.get('sleep', []):
+            sx, sy = c['ox'] + int(sl['pos'][0] * s), c['oy'] + int(sl['pos'][1] * s)
+            im_ = sl['im']; screen.blit(im_, (sx - im_.get_width() // 2, sy - im_.get_height() // 2))
+            txt("z z Z", sx, sy - im_.get_height() // 2 - 12, F_XS, C_MUTE, True, 'c')
     ents = [(n['pos'][1], c['sh'][n['who']].get(n['d'], 0, n['flip'], False), n['pos'], n['name'], n) for n in c['npcs']]
     ents.append((P.iy, c['hs'].get(P.d, P.step, P.flip, P.moving), (P.ix, P.iy), None, None))
     near = near_npc() if mode == 'explore' else None; t = pygame.time.get_ticks()
@@ -1990,8 +2147,12 @@ enc_at = 240.0
 
 
 def update_explore(dt):
-    global walk_t, enc_at
+    global walk_t, enc_at, door_lock
     now = pygame.time.get_ticks(); kk = pygame.key.get_pressed()
+    prev_tm = P.tm; P.tm += dt / MS_PER_MIN
+    if P.tm >= 1440: P.tm -= 1440; P.day += 1
+    if prev_tm < NIGHT_START <= P.tm: on_night()
+    elif prev_tm < NIGHT_END <= P.tm: on_morning()
     kx = int(bool(kk[K.K_RIGHT] or kk[K.K_d])) - int(bool(kk[K.K_LEFT] or kk[K.K_a]))
     ky = int(bool(kk[K.K_DOWN] or kk[K.K_s])) - int(bool(kk[K.K_UP] or kk[K.K_w]))
     jx, jy = joy_vec; jm = math.hypot(jx, jy)
@@ -2018,7 +2179,10 @@ def update_explore(dt):
     if loc is None:
         if area == 'town':
             for iid, r in DOORR.items():
-                if f.colliderect(r): enter(iid); return
+                if f.colliderect(r):
+                    if iid == 'windmill' and is_night():
+                        note("Guild tutup di malam hari. Kembali saat pagi."); P.x, P.y = DOORS[iid]['out']; door_lock = now + 900; return
+                    enter(iid); return
             if f.colliderect(GATE): enter_area('hunt', HENTRY); return
             if P.moving and P.dist > enc_at:
                 for r, z in WILD:

@@ -1,6 +1,8 @@
 # -*- coding: utf-8 -*-
 """Data game: item, monster, toko, interior rumah."""
 
+GUILD_MASTER = 'Maren si Ketua Guild'   # v1.2
+
 
 def I(name, typ, icon, val, **kw):
     d = dict(name=name, type=typ, icon=icon, val=val); d.update(kw); return d
@@ -133,6 +135,7 @@ DOORS = {
     'potion': dict(trig=(1172, 312, 42, 22), out=(1193, 346)),
     'smith': dict(trig=(520, 477, 50, 22), out=(545, 512)),
     'green': dict(trig=(1185, 487, 50, 22), out=(1210, 522)),
+    'windmill': dict(trig=(412, 604, 24, 22), out=(424, 642)),   # v1.2: kincir angin = Guild Petualang
 }
 # interior: crop = bbox pada gambar asli; semua rect memakai koordinat gambar asli
 INTERIORS = {
@@ -146,10 +149,63 @@ INTERIORS = {
                   exit=(1210, 722, 90, 22), spawn=(1255, 700), npc=('Nenek Wren', 'n04', 'granny', (1410, 665))),
     'church': dict(crop=(455, 2, 1092, 602), floor=[(495, 365, 530, 150), (690, 290, 195, 255)], solid=[(540, 395, 70, 95), (950, 400, 55, 55)],
                    exit=(735, 520, 95, 25), spawn=(782, 498), npc=('Pendeta Elias', 'n10', 'priest', (700, 440))),
+    # v1.2 guild petualang (gambar dibuat khusus, koordinat = piksel gambar, crop nol)
+    'windmill': dict(crop=(0, 0, 420, 300), floor=[(18, 186, 384, 110)], solid=[(118, 150, 184, 36), (320, 222, 64, 36)],
+                     exit=(190, 280, 40, 20), spawn=(210, 255), npc=(GUILD_MASTER, 'n11', 'guild', (210, 128))),
 }
 
 # monster berburu yang terlihat di peta Hutan Berburu: (nama, x, y, radius jelajah)
 HUNT_SPAWNS = [('Slime Hijau', 616, 504, 70), ('Slime Ungu', 696, 568, 60), ('Slime Biru', 760, 488, 60), ('Kelelawar', 552, 424, 80),
                ('Babi Hutan', 488, 600, 70), ('Serigala Hitam', 360, 360, 70), ('Serigala Putih', 424, 472, 70), ('Goblin', 792, 696, 70),
                ('Goblin Pemanah', 888, 696, 60), ('Laba-laba Merah', 568, 664, 60), ('Kerangka', 328, 232, 50), ('Bandit', 584, 440, 60),
-               ('Kobra', 664, 600, 40), ('Zombie', 1304, 392, 70), ('Ghoul', 1192, 440, 60), ('Golem Lumut', 1336, 472, 50), ('Vampir', 328, 168, 40)]
+               ('Kobra', 664, 600, 40), ('Zombie', 1304, 392, 70), ('Ghoul', 1192, 440, 60), ('Golem Lumut', 1336, 472, 50), ('Vampir', 328, 168, 40),
+               ('Raja Slime', 728, 568, 30)]   # v1.2: boss dipindah ke hutan (dulu hanya di battle acak desa)
+
+
+# ================= v1.2 =================
+
+# misi guild (papan di kincir angin). kind 'kill' = hitung kemenangan melawan monster yang namanya memuat `match`;
+# kind 'item' = hitung item `match` di tas. Hadiah: gold, xp, dan (opsional) satu item.
+GQ = [
+    dict(id='wolf', name='Berburu Serigala', desc='Kalahkan 3 Serigala di Hutan Berburu.', kind='kill', match='Serigala',
+         need=3, xp=60, gold=150, item=None),
+    dict(id='goblin', name='Basmi Goblin', desc='Kalahkan 4 Goblin di Hutan Berburu.', kind='kill', match='Goblin',
+         need=4, xp=80, gold=180, item='potion_hp2'),
+    dict(id='crystal', name='Pecahan Kristal', desc='Kumpulkan 2 Pecahan Kristal (jatuhan Serigala Putih).', kind='item',
+         match='shard', need=2, xp=50, gold=160, item=None),
+    dict(id='boss', name='Pemburu Raja', desc='Kalahkan Raja Slime di Hutan Berburu.', kind='kill', match='Raja Slime',
+         need=1, xp=150, gold=400, item='helm_wing'),
+]
+
+# posisi (koordinat peta-interior, pusat sprite) tempat NPC tidur di penginapan saat malam
+SLEEP_SPOTS = [(110, 128), (168, 268), (165, 178), (240, 184), (300, 190), (205, 372)]
+
+# objek yang harus menghalangi langkah di peta desa (kursi, pagar, pohon, plang, batu, tiang, meja pedagang)
+TOWN_SOLID = [
+    # kursi taman
+    (137, 412, 30, 14), (193, 414, 34, 14), (790, 302, 38, 13), (958, 305, 30, 16), (507, 530, 73, 24), (602, 528, 70, 30),
+    # tunggul & kemah
+    (122, 402, 14, 12), (229, 404, 22, 14), (265, 262, 22, 12), (357, 812, 22, 14), (1322, 790, 22, 14), (1462, 820, 22, 14),
+    (170, 372, 24, 16), (44, 332, 74, 36), (146, 318, 46, 34),
+    # lapak pedagang
+    (1262, 268, 46, 16), (1218, 300, 44, 30),
+    # papan nama / plang tukang besi
+    (580, 370, 26, 16),
+    # pagar
+    (107, 566, 156, 14), (376, 160, 12, 322), (400, 468, 200, 14), (1233, 488, 140, 18), (1100, 565, 80, 16),
+    (1355, 393, 18, 88), (953, 653, 75, 18),
+    # pagar ladang (dengan celah di sisi barat untuk jalan ke kincir angin)
+    (337, 575, 66, 16), (337, 575, 12, 23), (337, 652, 12, 25), (337, 657, 473, 20), (560, 563, 120, 12),
+    # kincir angin (menara) & tumpukan ladang yang bisa dilalui hanya di pintunya
+    (386, 520, 74, 86), (455, 585, 355, 72),
+    # tiang gerbang plaza
+    (823, 600, 24, 70), (923, 600, 30, 70),
+    # tembok batu & batu
+    (52, 740, 186, 50), (1400, 700, 55, 110), (647, 686, 36, 22),
+    # pohon (batang pohon / batas tanaman, ukuran kecil di tanah)
+    (333, 296, 14, 10), (420, 208, 14, 10), (340, 414, 14, 10), (350, 336, 12, 10), (106, 281, 14, 10),
+    (286, 682, 14, 10), (103, 703, 14, 10), (273, 521, 14, 10), (286, 834, 14, 10), (223, 834, 14, 10), (453, 850, 14, 10),
+    (573, 835, 14, 10), (746, 893, 14, 10), (696, 536, 14, 10), (936, 566, 14, 10), (1006, 601, 16, 12), (626, 404, 14, 10),
+    (742, 216, 16, 12), (1042, 288, 16, 10), (1286, 228, 14, 10), (1313, 388, 14, 10), (1386, 388, 14, 10), (1420, 240, 14, 10),
+    (1186, 852, 14, 10), (1486, 787, 14, 10),
+]
