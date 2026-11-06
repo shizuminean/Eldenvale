@@ -1,3 +1,14 @@
+ELDENVALE RPG v1.8 (desa gaya referensi)
+  - Alun-alun batu bulat dengan air mancur, lampu, dan papan pengumuman.
+  - Jembatan kayu menyeberangi sungai di timur.
+  - Kebun dengan pagar, hutan dan semak lebih rapat di tepi desa.
+
+ELDENVALE RPG v1.7 (desa lebih hidup & tabrakan penuh)
+  - Tabrakan kini menutupi seluruh sprite: rumah, pohon, semak, batu, perabot, dan meja tidak bisa diinjak.
+  - Desa diisi lebih banyak dekorasi: pohon, semak berbunga, batu, rumput, pasar, lampu, dan pagar.
+  - Interior: seluruh perabot tidak bisa diinjak, dan spawn dipindah ke tempat yang bebas.
+  - Ukuran game dikecilkan (gambar besar dikompres ke 256 warna).
+
 ELDENVALE RPG v1.6 (siang-sore-malam)
   - Sore: nuansa oranye mulai pukul 15.00, paling hangat menjelang senja.
   - Malam: layar makin gelap dari 19.00, gelap penuh sampai 04.30, lalu pudar menuju pagi.
