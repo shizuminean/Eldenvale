@@ -175,6 +175,15 @@ GQ = [
          match='shard', need=2, xp=50, gold=160, item=None),
     dict(id='boss', name='Pemburu Raja', desc='Kalahkan Raja Slime di Hutan Berburu.', kind='kill', match='Raja Slime',
          need=1, xp=150, gold=400, item='helm_wing'),
+    # v1.3 misi tambahan
+    dict(id='pig', name='Hama Babi', desc='Kalahkan 4 Babi Hutan di Hutan Berburu.', kind='kill', match='Babi Hutan',
+         need=4, xp=50, gold=120, item='meat'),
+    dict(id='bones', name='Tulang Belulang', desc='Kumpulkan 4 Tulang (jatuhan Kerangka & Zombie).', kind='item', match='bone',
+         need=4, xp=70, gold=140, item='potion_mp2'),
+    dict(id='cobra', name='Pemburu Kobra', desc='Kalahkan 2 Kobra di Hutan Berburu.', kind='kill', match='Kobra',
+         need=2, xp=90, gold=200, item=None),
+    dict(id='vampire', name='Penumpas Vampir', desc='Kalahkan Vampir penjaga gua di Hutan Berburu.', kind='kill', match='Vampir',
+         need=1, xp=300, gold=600, item='armor_silver'),
 ]
 
 # posisi (koordinat peta-interior, pusat sprite) tempat NPC tidur di penginapan saat malam

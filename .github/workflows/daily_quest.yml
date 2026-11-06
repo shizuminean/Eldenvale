@@ -1,0 +1,25 @@
+name: Misi harian (AI)
+on:
+  schedule:
+    - cron: '5 0 * * *'     # setiap hari 00:05 UTC
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  gen:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Buat misi harian
+        env:
+          GROQ_API_KEY: ${{ secrets.GROQ_API_KEY }}
+        run: python scripts/gen_daily_quest.py
+      - name: Commit misi
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add quests/daily.json
+          git diff --cached --quiet || (git commit -m "Misi harian $(date -u +%F)" && git push)

@@ -1,0 +1,13 @@
+{
+  "date": "2026-11-06",
+  "quest": {
+    "desc": "Kalahkan 3 Goblin Pemanah di Hutan Berburu.",
+    "kind": "kill",
+    "match": "Goblin Pemanah",
+    "need": 3,
+    "xp": 60,
+    "gold": 130,
+    "item": null,
+    "title": "Buru Goblin Pemanah"
+  }
+}

@@ -1,0 +1,2 @@
+{"date": "default", "quest": {"title": "Buru Babi Hutan", "desc": "Kalahkan 3 Babi Hutan di Hutan Berburu.",
+ "kind": "kill", "match": "Babi Hutan", "need": 3, "xp": 60, "gold": 130, "item": "meat"}}

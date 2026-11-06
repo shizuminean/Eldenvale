@@ -6,6 +6,8 @@ Bagian berkas:  1 inti & helper gambar | 2 aset | 3 dunia & state | 4 logika gam
 """
 import os, sys, json, math, random, copy, traceback, time as _pytime
 from collections import deque
+from ai_rumor import fetch_async, pop_rumor
+import daily_quest
 
 os.environ.setdefault('SDL_ANDROID_TRAP_BACK_BUTTON', '1')    # tombol Back tidak menutup aplikasi
 import pygame
@@ -592,7 +594,7 @@ NPCS = [
     dict(name="Fenn si Pemanah", who="n14", pos=(1120, 520), kind="archer", r=130),
     dict(name="Kesatria Ines", who="n18", pos=(1000, 330), kind="chat", r=100,
          lines=["Aku berpatroli di sini setiap hari.", "Monster di Hutan Berburu bisa dilihat dari jauh. Hindari yang terlalu kuat!"]),
-    dict(name="Madam Ruby", who="n11", pos=(900, 520), kind="chat", r=90,
+    dict(name="Madam Ruby", who="n11", pos=(900, 520), kind="seer", r=90,
          lines=["Aku meramal... kau akan segera naik level!", "Vampir penjaga gua di hutan itu sangat berbahaya."]),
     dict(name="Penyihir Selene", who="n26", pos=(700, 450), kind="chat", r=80,
          lines=["Esensi dari slime bagus untuk ramuan.", "Kumpulkan bahan, lalu jual ke Orn."]),
@@ -1008,6 +1010,11 @@ def quest_lines():
     return out
 
 
+def apply_daily(q):
+    """Ganti misi harian di papan guild (misi biasa tidak disentuh)."""
+    if q: GQ[:] = [g for g in GQ if not g.get('daily')] + [q]
+
+
 def guild_board():
     open_menu("Papan Misi Guild", [mi(q['name'], lambda q=q: guild_act(q), None, gq_status(q)) for q in GQ])
 
@@ -1073,6 +1080,10 @@ def talk(n):
             say(nm, ["Semua tamu sudah terlelap. Mau menginap sampai pagi?"], lambda: open_menu("Menginap?", [mi("Tidur sampai pagi", sleep_morning, None, "10 G", 10)]))
         else:
             say(nm, ["Penginapan Eldenvale! Menginap hanya 10 emas."], lambda: open_menu("Menginap?", [mi("Ya, menginap", rest, None, "10 G", 10)]))
+    elif k == 'seer':   # v1.3: peramal; desas-desus dari Groq jika kunci tersedia, selain itu teks cadangan
+        fresh = pop_rumor()
+        say(nm, [f"Aku melihat... {fresh}"] if fresh else n['lines'])
+        fetch_async(BASE)
     elif k == 'guild':
         say(nm, ["Selamat datang di Guild Petualang Eldenvale!", "Ambil misi dari papan, selesaikan di Hutan Berburu, lalu serahkan di sini."], guild_board)
     elif k in ('shop', 'camp'):
@@ -2195,6 +2206,8 @@ def update_explore(dt):
 
 
 def update(dt):
+    _dq = daily_quest.poll()
+    if _dq: apply_daily(_dq)
     if mode == 'explore':
         update_explore(dt)
         if loc is None: update_npcs(dt)
@@ -2239,6 +2252,7 @@ def boot():
     steps = [('Memuat peta...', load_world), ('Memuat karakter...', load_sprites), ('Menyiapkan antarmuka...', load_ui)]
     for i, (lab, fn) in enumerate(steps): splash(lab, i / float(len(steps))); fn()
     splash('Siap', 1.0)
+    apply_daily(daily_quest.default_quest()); daily_quest.start_fetch()   # v1.4 misi harian
     build_hud(); build_touch(); build_hunt(); new_game(); enter_title()
 
 
