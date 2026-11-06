@@ -1,3 +1,15 @@
+ELDENVALE RPG v1.6 (siang-sore-malam)
+  - Sore: nuansa oranye mulai pukul 15.00, paling hangat menjelang senja.
+  - Malam: layar makin gelap dari 19.00, gelap penuh sampai 04.30, lalu pudar menuju pagi.
+  - Penginapan: di sore dan malam ada pilihan 'Ya, tidur sampai pagi' (10 G). Pilih Ya untuk tidur, Tutup untuk batal.
+
+ELDENVALE RPG v1.5 (desa dibangun ulang)
+  - Desa baru dari aset tanah, bangunan, pohon & lahan. Tabrakan: air, batu, bangunan, pohon, tembok.
+    Pintu rumah & gerbang selatan hanya dimasuki dengan berjalan ke ambangnya (tidak menginjak bangunan).
+  - Kincir angin = Guild Petualang. Gerbang selatan menuju Hutan Berburu.
+  - FARMING: tanam benih di petak tanah (tekan Z/Spasi di dekat petak), tunggu tumbuh (~2 menit),
+    lalu panen. Benih dibeli di Lars si Petani (dekat kebun). Hasil panen dijual di toko Orn.
+
 ELDENVALE RPG v1.2 (Python + pygame, PC & Android)
 
 YANG BARU DI v1.2
