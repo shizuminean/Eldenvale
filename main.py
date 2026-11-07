@@ -12,8 +12,9 @@ import daily_quest
 os.environ.setdefault('SDL_ANDROID_TRAP_BACK_BUTTON', '1')    # tombol Back tidak menutup aplikasi
 import pygame
 from data import *
+import village as V
 
-VERSION = '1.2'
+VERSION = '1.5'
 BASE = os.path.dirname(os.path.abspath(__file__))
 A = lambda *p: os.path.join(BASE, 'assets', *p)
 ANDROID = 'ANDROID_ARGUMENT' in os.environ or 'ANDROID_PRIVATE' in os.environ
@@ -503,20 +504,17 @@ def splash(label, p):
 
 
 def load_world():
-    global MAP, MW, MH, HMAP, HW, HH, HGW, HGH, HGRID, SHADOW, BLOCK, WILD, DOORR, GATE_IMG, FARM_IMG
-    MAP = img('map.png', alpha=False); MW, MH = MAP.get_size()
+    global MAP, MW, MH, HMAP, HW, HH, HGW, HGH, HGRID, SHADOW, BLOCK, WILD, DOORR, DOORS, TOWN, GATE, GATE_OUT
+    TOWN = V.build_town()                       # v1.5: desa dibangun lewat kode (tilemap + sprite)
+    MAP = TOWN.ground; MW, MH = V.MW, V.MH
+    BLOCK = list(TOWN.block); DOORS = TOWN.doors; GATE, GATE_OUT = TOWN.gate, TOWN.gate_out
     HMAP = img('hunt.png', alpha=False); HW, HH = HMAP.get_size()
     hm = img('hunt_mask.png', alpha=False); HGW, HGH = hm.get_size()
     HGRID = [[hm.get_at((i, j))[0] > 128 for i in range(HGW)] for j in range(HGH)]
     SHADOW = pygame.Surface((40, 16), pygame.SRCALPHA)
     pygame.draw.ellipse(SHADOW, (0, 0, 0, 96), SHADOW.get_rect())
-    BLOCK = []   # v1.4: tabrakan desa dari grid tanah (TOWN, lihat town_blocked)
-    build_town_grid()
-    WILD = []   # v1.2: tidak ada battle mendadak di desa; monster hanya di Hutan Berburu
+    WILD = []   # tidak ada battle mendadak di desa; monster hanya di Hutan Berburu
     DOORR = {k_: pygame.Rect(*v_['trig']) for k_, v_ in DOORS.items()}
-    GATE_IMG = img('gate_over.png')
-    FARM_IMG = {k_: [img('farm', '%s_%d.png' % (k_, i_)) for i_ in range(4)] for k_ in ('wheat', 'cabbage', 'carrot')}
-    farm_reset()
 
 
 def make_portrait(d, zoom=1.0, dy=0.04):
@@ -578,32 +576,33 @@ def load_ui():
 
 
 # ============================================================ 3. DUNIA & STATE
-GATE, GATE_OUT = pygame.Rect(*TOWN["gate"]), TOWN["gate_out"]
+GATE, GATE_OUT = pygame.Rect(1340, 2036, 120, 30), (1400, 1990)   # diisi ulang oleh load_world()
+DOORS, TOWN = {}, None
 HEXIT, HENTRY = pygame.Rect(660, 892, 52, 24), (696, 830)
 DOOR_NAME = {'inn': 'Penginapan', 'church': 'Gereja', 'potion': 'Toko Ramuan', 'smith': 'Pandai Besi', 'green': 'Rumah Nenek Wren', 'windmill': 'Guild Petualang'}
 NPCS = [
-    dict(name="Sir Aldric", who="n05", pos=(830, 380), kind="quest", r=40, still=True),
-    dict(name="Mira", who="n27", pos=(600, 560), kind="girl", r=150),
-    dict(name="Cale si Pedagang", who="n29", pos=(1000, 420), kind="chat", r=110,
+    dict(name="Sir Aldric", who="n05", pos=(800, 330), kind="quest", r=40, still=True),
+    dict(name="Mira", who="n27", pos=(700, 565), kind="girl", r=150),
+    dict(name="Cale si Pedagang", who="n29", pos=(1010, 470), kind="chat", r=110,
          lines=["Barang dagangan terbaik ada di toko Orn dan Brom!", "Monster di Hutan Berburu menjatuhkan bahan yang laku mahal."]),
-    dict(name="Anya", who="n19", pos=(640, 500), kind="chat", r=90,
+    dict(name="Anya", who="n19", pos=(585, 500), kind="chat", r=90,
          lines=["Aku pernah masuk gereja. Di dalamnya megah sekali!", "Ssst, kata orang ada Raja Slime di padang hijau Hutan Berburu."]),
-    dict(name="Fenn si Pemanah", who="n14", pos=(1040, 470), kind="archer", r=130),
-    dict(name="Kesatria Ines", who="n18", pos=(1000, 350), kind="chat", r=100,
+    dict(name="Fenn si Pemanah", who="n14", pos=(1120, 520), kind="archer", r=130),
+    dict(name="Kesatria Ines", who="n18", pos=(1000, 330), kind="chat", r=100,
          lines=["Aku berpatroli di sini setiap hari.", "Monster di Hutan Berburu bisa dilihat dari jauh. Hindari yang terlalu kuat!"]),
-    dict(name="Madam Ruby", who="n11", pos=(930, 500), kind="seer", r=90,
+    dict(name="Madam Ruby", who="n11", pos=(900, 520), kind="seer", r=90,
          lines=["Aku meramal... kau akan segera naik level!", "Vampir penjaga gua di hutan itu sangat berbahaya."]),
     dict(name="Penyihir Selene", who="n26", pos=(700, 450), kind="chat", r=80,
          lines=["Esensi dari slime bagus untuk ramuan.", "Kumpulkan bahan, lalu jual ke Orn."]),
-    dict(name="Kakek Odo", who="n03", pos=(880, 636), kind="chat", r=0, still=True,
+    dict(name="Kakek Odo", who="n03", pos=(1030, 560), kind="chat", r=0, still=True,
          lines=["Dulu aku berburu di hutan selatan. Sekarang cukup duduk di sini.", "Naga kecil penghuni hutan menjatuhkan Pedang Darah, konon."]),
-    dict(name="Penjaga Gerbang", who="n08", pos=(840, 770), kind="chat", r=0, still=True,
+    dict(name="Penjaga Gerbang", who="n08", pos=(812, 855), kind="chat", r=0, still=True,
          lines=["Gerbang selatan menuju Hutan Berburu.", "Monster di sana terlihat dan akan mengejarmu. Bawa ramuan!"]),
-    dict(name="Putri Elara", who="n28", pos=(900, 380), kind="chat", r=0, still=True,
+    dict(name="Putri Elara", who="n28", pos=(790, 420), kind="chat", r=0, still=True,
          lines=["Air mancur ini kesukaanku.", "Pahlawan sepertimu selalu disambut di Eldenvale."]),
-    dict(name="Lars si Petani", who="n26", pos=(700, 655), kind="seeds", r=0, still=True,
-         lines=["Benih segar untuk kebunmu! Tanam di petak tanah, lalu panen setelah tumbuh."]),
 ]
+NPCS.append(dict(name="Petani Tomo", who="n15", pos=(1190, 1742), kind="farmer", r=0, still=True))
+for _n in NPCS: _n['pos'] = V.NPC_POS.get(_n['name'], _n['pos'])
 HNPCS = [dict(name="Pemburu Rhea", who="n15", pos=(1345, 415), kind="camp", r=0, still=True)]
 area = 'town'
 
@@ -620,7 +619,7 @@ def init_npc(n):
 
 
 class P:
-    x, y = TOWN["spawn"][0] + 0.0, TOWN["spawn"][1] + 0.0
+    x, y = float(V.SPAWN[0]), float(V.SPAWN[1])
     ix, iy = 0.0, 0.0
     d, step, flip, dist, moving = 'down', 0, False, 0.0, False
     lv, xp, gold = 1, 0, 60
@@ -635,12 +634,13 @@ class P:
     tm = 420.0
     day = 1
     gq = {}
+    farm = {}
 
 
-DEFAULT = dict(x=float(TOWN['spawn'][0]), y=float(TOWN['spawn'][1]), lv=1, xp=0, gold=60, hp=60, maxhp=60, mp=20, maxmp=20, atk=9, df=3, wl=0, slimes=0, quest=0,
-               bag=[['potion_hp', 3], ['potion_mp', 1], ['bread', 2], ['dagger', 1], ['seed_wheat', 5], ['seed_carrot', 2]], tm=420.0, day=1, gq={})
+DEFAULT = dict(x=float(V.SPAWN[0]), y=float(V.SPAWN[1]), lv=1, xp=0, gold=60, hp=60, maxhp=60, mp=20, maxmp=20, atk=9, df=3, wl=0, slimes=0, quest=0,
+               bag=[['potion_hp', 3], ['potion_mp', 1], ['bread', 2], ['dagger', 1]] + [list(x) for x in START_SEEDS], tm=420.0, day=1, gq={}, farm={})
 MAXBAG = 30
-SAVE_KEYS = ['x', 'y', 'lv', 'xp', 'gold', 'hp', 'maxhp', 'mp', 'maxmp', 'atk', 'df', 'wl', 'slimes', 'quest', 'bag', 'eq', 'tm', 'day', 'gq']
+SAVE_KEYS = ['x', 'y', 'lv', 'xp', 'gold', 'hp', 'maxhp', 'mp', 'maxmp', 'atk', 'df', 'wl', 'slimes', 'quest', 'bag', 'eq', 'tm', 'day', 'gq', 'farm']
 
 
 def need(lv): return 20 + lv * lv * 8
@@ -763,7 +763,7 @@ def hunt_ok(r):
 def blocked(x, y, skip=None):
     r = feet(x, y)
     if area == 'town':
-        if town_blocked(r) or any(r.colliderect(b) for b in BLOCK): return True
+        if TOWN.hit(r) or any(r.colliderect(b) for b in BLOCK): return True
     elif not hunt_ok(r): return True
     for n in anpcs():
         if n is not skip and r.colliderect(feet(*n['pos']).inflate(10, 6)): return True
@@ -914,32 +914,20 @@ INT_CACHE = {}
 
 def build_interior(iid):
     if iid in INT_CACHE: return INT_CACHE[iid]
-    d = INTERIORS[iid]; x0, y0 = d['crop'][0], d['crop'][1]
-    im = img('int', iid + '.png', alpha=False)
+    r = V.build_interior(iid); im = r['surf']
     s = min((W - 40) / float(im.get_width()), (H - 40) / float(im.get_height()), 2.2)
     surf = pygame.transform.smoothscale(im, (int(im.get_width() * s), int(im.get_height() * s)))
-    k = s * 0.7; sub = lambda r: pygame.Rect(r[0] - x0, r[1] - y0, r[2], r[3])
-    nm, who, kind, pos = d['npc']
-    npc = dict(name=nm, who=who, kind=kind, pos=[pos[0] - x0, pos[1] - y0], d='down', flip=False, moving=False, anim=0)
-    # v1.3: pintu ada di dinding bawah. Lantai berhenti di tepi atas pintu supaya karakter tidak berjalan
-    # di atas gambar pintu; karakter hanya bisa masuk dengan berjalan turun melewati ambang pintu.
-    door = sub(d['exit'])
-    floor = []
-    for r_ in d['floor']:
-        fr = sub(r_)
-        if fr.bottom > door.top: fr.h = max(0, door.top - fr.top)
-        floor.append(fr)
-    dpos = (int(door.x * s), int(door.y * s))
-    door_img = surf.subsurface(pygame.Rect(dpos[0], dpos[1], int(door.w * s), int(door.h * s))).copy()
-    c = dict(id=iid, s=s, surf=surf, ox=(W - surf.get_width()) // 2, oy=(H - surf.get_height()) // 2, floor=floor,
-             solid=[sub(r) for r in d['solid']], exit=door, door=door, door_img=door_img, door_pos=dpos,
-             spawn=(d['spawn'][0] - x0, d['spawn'][1] - y0),
+    k = s * 0.7
+    nm, who, kind = INTERIORS[iid]['npc']
+    npc = dict(name=nm, who=who, kind=kind, pos=list(r['npc_pos']), d='down', flip=False, moving=False, anim=0)
+    c = dict(id=iid, s=s, surf=surf, ox=(W - surf.get_width()) // 2, oy=(H - surf.get_height()) // 2, floor=r['floor'],
+             solid=r['solid'], exit=r['exit'], spawn=r['spawn'],
              hs=Sheet('hero', scale=HS * k), sh={who: Sheet(who, h=int(70 * k))}, npcs=[npc], k=k)
     c['sleep'] = []
-    if iid == 'inn':   # v1.2: penduduk tidur di penginapan saat malam (posisi di SLEEP_SPOTS)
-        for n_, (gx, gy) in zip(NPCS, SLEEP_SPOTS):
+    if iid == 'inn':   # penduduk tidur di penginapan saat malam
+        for n_, pos_ in zip(NPCS, r['sleep']):
             sh_ = Sheet(n_['who'], h=int(70 * k))
-            c['sleep'].append(dict(im=pygame.transform.rotate(sh_.get('down', 0, False, False), 90), pos=(gx - x0, gy - y0)))
+            c['sleep'].append(dict(im=pygame.transform.rotate(sh_.get('down', 0, False, False), 90), pos=pos_))
     INT_CACHE[iid] = c; return c
 
 
@@ -952,12 +940,6 @@ def int_ok(x, y):
         if not any(f.collidepoint(p) for f in cur['floor']): return False
     if any(r.colliderect(s) for s in cur['solid']): return False
     return not any(r.colliderect(ifeet(*n['pos']).inflate(14, 8)) for n in cur['npcs'])
-
-
-def door_ok(x, y):
-    """v1.3: pintu tembok hanya dilewati dengan berjalan turun dari dalam ruangan (kaki masuk lewat ambang pintu)."""
-    d = cur['door']; r = ifeet(x, y)
-    return r.left >= d.left and r.right <= d.right and r.top < d.bottom
 
 
 def enter(iid):
@@ -982,21 +964,10 @@ def is_night(): return P.tm >= NIGHT_START or P.tm < NIGHT_END
 
 
 def night_level():
-    """v1.6: 0 = siang terang, 1 = malam gelap penuh. Naik pelan 19.00-21.00, gelap sampai 04.30, lalu pudar sampai 06.00."""
     t = P.tm
-    if 19 * 60 <= t < 21 * 60: return (t - 19 * 60) / 120.0
-    if t >= 21 * 60 or t < 4 * 60 + 30: return 1.0
-    if 4 * 60 + 30 <= t < 6 * 60: return (6 * 60 - t) / 90.0
-    return 0.0
-
-
-def warm_level():
-    """v1.6: nuansa sore oranye. Mulai pukul 15.00, paling kuat menjelang senja (19.00), pudar saat malam, hangat lagi saat fajar."""
-    t = P.tm
-    if 15 * 60 <= t < 17 * 60: return 0.35 * (t - 15 * 60) / 120.0
-    if 17 * 60 <= t < 19 * 60: return 0.35 + 0.65 * (t - 17 * 60) / 120.0
-    if 19 * 60 <= t < 21 * 60: return 1.0 - (t - 19 * 60) / 120.0
-    if 5 * 60 <= t < 6 * 60 + 30: return 0.35 * (1 - (t - 5 * 60) / 90.0)
+    if 19 * 60 <= t < 21 * 60: return 0.6 * (t - 19 * 60) / 120.0
+    if t >= 21 * 60 or t < 4 * 60 + 30: return 0.6
+    if 4 * 60 + 30 <= t < 6 * 60: return 0.6 * (6 * 60 - t) / 90.0
     return 0.0
 
 
@@ -1012,6 +983,49 @@ def on_night():
 
 
 def on_morning(): note("Pagi tiba. Penduduk kembali ke alun-alun.")
+
+
+# ---------------- v1.5 pertanian ----------------
+def on_new_day():
+    planted = any(p[1] for p in P.farm.values())
+    rain = V.new_day(P.farm)
+    if planted: note("Hujan turun! Semua tanaman tersiram." if rain else "Hari baru. Siram tanamanmu agar tumbuh.")
+
+
+def farm_hint(key):
+    p = P.farm.get(key)
+    if not p: return "Cangkul tanah"
+    if not p[1]: return "Tanam benih"
+    if V.ripe(p): return "Panen " + CROPS[p[1]]['name']
+    if not p[3]: return "Siram " + CROPS[p[1]]['name']
+    return f"{CROPS[p[1]]['name']}: {min(p[2], CROPS[p[1]]['days'])}/{CROPS[p[1]]['days']} hari"
+
+
+def plant_menu(key):
+    seeds = [(i, c) for i, c in P.bag if ITEMS[i].get('seed')]
+    if not seeds: note("Kamu tidak punya benih. Beli di Petani Tomo."); return
+    def go(iid):
+        if count(iid) < 1: return
+        remove_item(iid, 1); P.farm[key][1] = ITEMS[iid]['seed']; P.farm[key][2] = 0; P.farm[key][3] = 0
+        close_menu(); note(f"Menanam {ITEMS[iid]['name']}")
+    open_menu("Pilih benih", [mi(ITEMS[i]['name'], lambda i=i: go(i), i, f"x{c}") for i, c in seeds])
+
+
+def farm_act():
+    key = V.facing_plot(P.x, P.y, P.d, P.flip)
+    if not key: return False
+    p = P.farm.get(key)
+    if not p: P.farm[key] = [1, None, 0, 0]; note("Tanah dicangkul."); return True
+    if not p[1]: plant_menu(key); return True
+    cr = CROPS[p[1]]
+    if V.ripe(p):
+        n = random.choice([1, 2, 2, 3]); iid = 'crop_' + p[1]
+        if not add_item(iid, n): note("Tas penuh!"); return True
+        P.farm[key] = [1, None, 0, 0]; msgs = gain(3 + cr['days'], 0)
+        note(f"Panen {cr['name']} x{n}!"); [note(m) for m in msgs]; return True
+    if not p[3]: p[3] = 1; note(f"{cr['name']} disiram."); return True
+    note(f"{cr['name']} sedang tumbuh ({min(p[2], cr['days'])}/{cr['days']} hari).")
+    return True
 
 
 def gq_get(qid): return P.gq.setdefault(qid, dict(st='new', n=0))
@@ -1096,28 +1110,23 @@ def talk(n):
             if P.gold >= 10: P.gold -= 10; heal_full(); note("Istirahat nyenyak. HP & MP pulih (-10 G)")
             else: note("Emas tidak cukup.")
             close_menu()
-        def sleep_morning():   # v1.2/v1.6: tidur sampai pagi, waktu melompat ke 06:00 hari berikutnya
+        def sleep_morning():   # v1.2: tidur malam sampai pagi (waktu melompat ke 06:00)
             if P.gold < 10: note("Emas tidak cukup."); close_menu(); return
             P.gold -= 10; heal_full()
-            if P.tm >= 12 * 60: P.day += 1
+            if P.tm >= 6 * 60: P.day += 1; on_new_day()
             P.tm = 6 * 60.0
             close_menu()
             say("Penginapan", ["Kau berbaring dan tertidur lelap...", "Saat terbangun, pagi sudah tiba. HP & MP pulih penuh."])
-        if P.tm >= 17 * 60 or P.tm < 5 * 60:   # v1.6: sore & malam -> pilihan tidur dengan Ya / Tidak
-            if is_night():
-                say(nm, ["Semua tamu sudah terlelap. Mau menginap sampai pagi?"], lambda: open_menu("Tidur sampai pagi?", [mi("Ya, tidur sampai pagi", sleep_morning, None, "10 G", 10)]))
-            else:
-                say(nm, ["Hari sudah sore. Mau menginap dan tidur sampai pagi?"], lambda: open_menu("Tidur sampai pagi?", [mi("Ya, tidur sampai pagi", sleep_morning, None, "10 G", 10)]))
+        if is_night():
+            say(nm, ["Semua tamu sudah terlelap. Mau menginap sampai pagi?"], lambda: open_menu("Menginap?", [mi("Tidur sampai pagi", sleep_morning, None, "10 G", 10)]))
         else:
-            say(nm, ["Penginapan Eldenvale! Menginap hanya 10 emas."], lambda: open_menu("Menginap?", [mi("Ya, menginap", rest, None, "10 G", 10)]))
+            say(nm, ["Penginapan Eldenvale! Menginap hanya 10 emas.", "Mau tidur sampai pagi? Tanamanmu akan tumbuh."], lambda: open_menu("Menginap?", [mi("Istirahat sebentar", rest, None, "10 G", 10), mi("Tidur sampai pagi", sleep_morning, None, "10 G", 10)]))
     elif k == 'seer':   # v1.3: peramal; desas-desus dari Groq jika kunci tersedia, selain itu teks cadangan
         fresh = pop_rumor()
         say(nm, [f"Aku melihat... {fresh}"] if fresh else n['lines'])
         fetch_async(BASE)
     elif k == 'guild':
         say(nm, ["Selamat datang di Guild Petualang Eldenvale!", "Ambil misi dari papan, selesaikan di Hutan Berburu, lalu serahkan di sini."], guild_board)
-    elif k == 'seeds':
-        say(nm, n['lines'], lambda: open_shop("Toko Benih", SHOP_SEED))
     elif k in ('shop', 'camp'):
         def sell_all():
             tot = sum(ITEMS[i]['val'] * c for i, c in P.bag if ITEMS[i]['type'] == 'mat')
@@ -1134,6 +1143,15 @@ def talk(n):
             P.gold -= c; P.wl += 1; P.atk += 3; note(f"Senjata ditempa +{P.wl}! ATK +3")
         say(nm, ["Besi yang baik butuh api yang panas!"],
             lambda: open_shop("Pandai Besi", SHOP_BROM, [mi(f"Tempa senjata (ATK +3)", up, None, f"{50 * (P.wl + 1)} G", 50 * (P.wl + 1))]))
+    elif k == 'farmer':
+        def sell_crops():
+            tot = sum(ITEMS[i]['val'] * c for i, c in P.bag if ITEMS[i].get('crop'))
+            if tot <= 0: note("Belum ada hasil panen untuk dijual."); return
+            P.bag[:] = [s_ for s_ in P.bag if not ITEMS[s_[0]].get('crop')]; P.gold += tot; note(f"Menjual hasil panen: +{tot} G")
+        def farm_menu():
+            tot = sum(ITEMS[i]['val'] * c for i, c in P.bag if ITEMS[i].get('crop'))
+            open_shop("Toko Benih", SHOP_SEEDS, [mi("Jual semua hasil panen", sell_crops, None, f"+{tot} G")])
+        say(nm, ["Selamat datang di ladang Eldenvale! Aku Tomo.", "Cangkul tanah, tanam benih, siram tiap hari, lalu panen.", "Berdirilah menghadap petak lalu tekan Z / tombol A."], farm_menu)
     elif k == 'archer':
         say(nm, ["Monster kecil sekarang hanya ada di Hutan Berburu, lewat gerbang selatan.", "Lewati gerbang selatan untuk ke Hutan Berburu. Monster di sana terlihat, tapi ada Vampir penjaga gua. Bawa ramuan!"])
     elif k == 'granny':
@@ -1157,80 +1175,10 @@ def near_npc():
     return best
 
 
-# ---------------- desa v1.4: grid tabrakan & kebun ----------------
-TBLK = set()
-
-
-def build_town_grid():
-    TBLK.clear()
-    for cy, a, b in TOWN['rows']:
-        for cx in range(a, b + 1): TBLK.add((cx, cy))
-
-
-def town_blocked(r):
-    C = TOWN['cell']
-    for x_, y_ in ((r.left, r.top), (r.right - 1, r.top), (r.left, r.bottom - 1), (r.right - 1, r.bottom - 1), (r.centerx, r.centery)):
-        if x_ < 0 or y_ < 0 or x_ >= TOWN['W'] or y_ >= TOWN['H']: return True
-        if (x_ // C, y_ // C) in TBLK: return True
-    return False
-
-
-STAGE_MS = 30000   # tiap tahap tumbuh 30 detik, panen di tahap 4
-FARM = []
-SEED_OF = {'wheat': 'seed_wheat', 'cabbage': 'seed_cabbage', 'carrot': 'seed_carrot'}
-GATE_IMG = FARM_IMG = None
-
-
-def farm_reset(state=None):
-    FARM[:] = []
-    for (rx, ry, rw, rh), cols, rows in TOWN['plots']:
-        cw_, ch_ = rw / float(cols), rh / float(rows)
-        for j in range(rows):
-            for i in range(cols):
-                FARM.append(dict(x=rx + (i + .5) * cw_, y=ry + (j + .5) * ch_, crop=None, g=0.0))
-    if state:
-        for c, (cr, g) in zip(FARM, state):
-            c['crop'] = cr if cr in SEED_OF else None; c['g'] = float(g) if c['crop'] else 0.0
-
-
-def farm_state(): return [[c['crop'], int(c['g'])] for c in FARM]
-
-
-def crop_stage(c): return min(3, int(c['g'] // STAGE_MS))
-
-
-def farm_tick(dt):
-    for c in FARM:
-        if c['crop'] and c['g'] < 3 * STAGE_MS: c['g'] += dt
-
-
-def farm_act():
-    best, bd = None, 38
-    for c in FARM:
-        d_ = math.hypot(c['x'] - P.x, c['y'] - P.y)
-        if d_ < bd: best, bd = c, d_
-    if best is None: return False
-    c = best
-    if c['crop'] is None:
-        for k_ in ('wheat', 'cabbage', 'carrot'):
-            if count(SEED_OF[k_]) > 0:
-                remove_item(SEED_OF[k_]); c['crop'] = k_; c['g'] = 0.0
-                note(f"Menanam {ITEMS[SEED_OF[k_]]['name']}"); return True
-        note("Tidak punya benih. Beli di Lars si Petani."); return True
-    st = crop_stage(c)
-    if st >= 3:
-        out_ = c['crop']; n_ = random.randint(1, 2)
-        if not add_item(out_, n_): note("Tas penuh!"); return True
-        note(f"Panen {n_} {ITEMS[out_]['name']}"); P.xp += 4
-        c['crop'] = None; c['g'] = 0.0; return True
-    note(f"Tanaman masih tumbuh ({st}/3).")
-    return True
-
-
 def interact():
     n = near_npc()
-    if n: talk(n); return
-    if loc is None and area == 'town': farm_act()
+    if n: talk(n)
+    elif loc is None and area == 'town': farm_act()
 
 
 # ---------------- battle ----------------
@@ -1336,14 +1284,14 @@ def update_battle():
     elif s == 'end_lose':
         P.gold //= 2; P.hp, P.mp = P.maxhp // 2, P.maxmp // 2
         for e in HM: e['pos'] = [float(e['home'][0]), float(e['home'][1])]; e['imm'] = pygame.time.get_ticks() + 3000
-        mode = 'explore'; battle = None; enter_area('town', TOWN["spawn"]); note("Kamu pingsan & terbangun di alun-alun (emas -50%)")
+        mode = 'explore'; battle = None; enter_area('town', (880, 560)); note("Kamu pingsan & terbangun di alun-alun (emas -50%)")
 
 
 # ---------------- simpan / muat / game baru ----------------
 def save(quiet=False):
     try:
         d = {k: getattr(P, k) for k in SAVE_KEYS}
-        d['area'] = area; d['v'] = VERSION; d['farm'] = farm_state()
+        d['area'] = area; d['v'] = VERSION
         tmp = SAVE + '.tmp'
         with open(tmp, 'w') as f: json.dump(d, f)
         os.replace(tmp, SAVE)
@@ -1363,17 +1311,21 @@ def loadgame():
     if not os.path.exists(SAVE): note("Belum ada save."); return False
     try:
         with open(SAVE) as f: d = json.load(f)
+        P.farm = {}
         for k, v in d.items():
             if k in ('pot', 'eth', 'v'): continue
             if k == 'area': area = v if v in ('town', 'hunt') else 'town'; continue
             if k in SAVE_KEYS: setattr(P, k, v)
-        if 'farm' in d: farm_reset(d['farm'])
+        if 'farm' not in d:
+            for _i, _c in START_SEEDS: add_item(_i, _c)
         if 'pot' in d: add_item('potion_hp', d['pot'])
         if 'eth' in d: add_item('potion_mp', d['eth'])
         P.bag = [list(s) for s in P.bag if isinstance(s, (list, tuple)) and len(s) == 2 and s[0] in ITEMS]
         P.eq = {s: (P.eq.get(s) if P.eq.get(s) in ITEMS else None) for s in SLOT_NAME}
+        if not isinstance(P.farm, dict): P.farm = {}
+        P.farm = {k_: v_ for k_, v_ in P.farm.items() if isinstance(v_, list) and len(v_) == 4 and (v_[1] is None or v_[1] in CROPS)}
         P.hp = clamp(int(P.hp), 1, P.maxhp); P.mp = clamp(int(P.mp), 0, P.maxmp)
-        if area == 'town' and blocked(P.x, P.y): P.x, P.y = TOWN["spawn"][0] + 0.0, TOWN["spawn"][1] + 0.0
+        if area == 'town' and blocked(P.x, P.y): P.x, P.y = float(V.SPAWN[0]), float(V.SPAWN[1])
         if area == 'hunt' and not hunt_ok(feet(P.x, P.y)): P.x, P.y = float(HENTRY[0]), float(HENTRY[1])
         loc = cur = None; reset_touch(); note("Game dimuat.")
         return True
@@ -1388,7 +1340,6 @@ def new_game():
     P.ix = P.iy = 0.0; P.d, P.flip, P.moving, P.dist = 'down', False, False, 0.0
     area = 'town'; loc = cur = None; dialog = menu = battle = None
     for n in NPCS + HNPCS: init_npc(n)
-    farm_reset()
     for e in HM: e.update(alive=True, pos=[float(e['home'][0]), float(e['home'][1])], imm=0, tgt=None, wait=0, chase=False)
     reset_touch()
 
@@ -1493,7 +1444,7 @@ def draw_hud():
     txt(clock_str(), q.right - 12, q.y + 5, F_XS, C_MUTE, False, 'r')
     for i, l in enumerate(lines): txt(l, q.x + 14, q.y + 28 + i * 19, F_S, C_TEXT, False if i else True)
     if not ANDROID and not show_touch():
-        t = "WASD / Panah: jalan    Z / Spasi: bicara    I: tas    P: ramuan    F5: simpan"
+        t = "WASD / Panah: jalan    Z / Spasi: bicara & berladang    I: tas    P: ramuan    F5: simpan"
         w = F_XS.size(t)[0] + 36; hr = pygame.Rect((W - w) // 2, H - 38, w, 28); shape(hr, (8, 12, 26, 170), 14, (255, 255, 255, 36), 1)
         txt(t, W // 2, hr.y + 5, F_XS, C_MUTE, False, 'c')
 
@@ -1558,8 +1509,10 @@ def spaced(text, font, col, gap):
 
 def draw_title():
     t = pygame.time.get_ticks(); k = 0.5 + 0.5 * math.sin(t / 7000.0)
-    cx = int((MW - W) * k) if MW > W else 0; cy = int(clamp((MH - H) * (0.42 + 0.1 * math.sin(t / 9000.0)), 0, max(0, MH - H)))
+    cx = int(300 + (MW - W - 600) * k) if MW > W + 600 else 0; cy = int(clamp((MH - H) * (0.40 + 0.1 * math.sin(t / 9000.0)), 0, max(0, MH - H)))
     screen.fill((0, 0, 0)); screen.blit(MAP, ((W - MW) // 2 if MW < W else 0, 0), (cx, cy, min(W, MW), min(H, MH)))
+    for (_by, _im, _x, _y) in V.visible_objs(TOWN, cx, cy, W, H): screen.blit(_im, (_x - cx, _y - cy))
+    V.draw_effects(screen, TOWN, cx, cy, 0, 0, W, H, t, 0.0)
     veil(96, (6, 10, 28)); fade_v((0, 0, W, int(H * 0.5)), 150, 0); fade_v((0, int(H * 0.55), W, H - int(H * 0.55)), 0, 190)
     ty = int(H * 0.085); a = rt("ELDENVALE", F_T, C_GOLD)
     txt("ELDENVALE", W // 2, ty, F_T, C_GOLD, True, 'c')
@@ -1671,19 +1624,35 @@ def cam(mw, mh, px, py):
 
 
 _NV = {}
-_WV = {}
 
 
 def night_veil(lv):
     v = _NV.get((W, H))
     if v is None: v = _NV[(W, H)] = pygame.Surface((W, H), pygame.SRCALPHA)
-    v.fill((4, 6, 30, int(lv * 222))); screen.blit(v, (0, 0))
+    v.fill((10, 16, 52, int(lv * 170))); screen.blit(v, (0, 0))
 
 
-def warm_veil(wv):
-    v = _WV.get((W, H))
-    if v is None: v = _WV[(W, H)] = pygame.Surface((W, H), pygame.SRCALPHA)
-    v.fill((255, 128, 40, int(wv * 92))); screen.blit(v, (0, 0))
+_VG = {}
+
+
+def vignette():
+    v = _VG.get((W, H))
+    if v is None:
+        v = _VG[(W, H)] = pygame.Surface((W, H), pygame.SRCALPHA)
+        for i in range(48): pygame.draw.rect(v, (8, 6, 20, int(0.075 * (48 - i) ** 1.35)), (i, i, W - 2 * i, H - 2 * i), 1)
+    screen.blit(v, (0, 0))
+
+
+def dusk_tint():
+    m = P.tm
+    a = 0.0
+    if 16.5 * 60 <= m < 19 * 60: a = (m - 16.5 * 60) / 150.0
+    elif 19 * 60 <= m < 20 * 60: a = 1.0 - (m - 19 * 60) / 60.0
+    elif 5 * 60 <= m < 7 * 60: a = 0.8 * (1.0 - abs(m - 6 * 60) / 60.0)
+    if a > 0.02:
+        v = _NV.get((W, H, 'd'))
+        if v is None: v = _NV[(W, H, 'd')] = pygame.Surface((W, H), pygame.SRCALPHA)
+        v.fill((255, 140, 60, int(a * 46))); screen.blit(v, (0, 0))
 
 
 def draw_outdoor():
@@ -1692,20 +1661,19 @@ def draw_outdoor():
     if ox or oy: screen.fill((6, 10, 18))
     screen.blit(mp, (ox, oy), (cx, cy, min(W, mw), min(H, mh)))
     ents = []
+    if area == 'town':   # v1.5: objek desa (rumah, pohon, taman) & tanaman ladang ikut diurutkan menurut Y
+        for (by_, im_, x_, y_) in V.visible_objs(TOWN, cx, cy, W, H): ents.append((by_, im_, (x_, y_), None, None, None))
+        for (by_, im_, x_, y_) in V.draw_farm(screen, TOWN, P.farm, cx, cy, ox, oy, W, H): ents.append((by_, im_, (x_, y_), None, None, None))
     for n in anpcs():
         im = sheet_for(n['who']).get(n['d'], n['anim'] // 200, n['flip'], n['moving'])
         ents.append((n['pos'][1], im, n['pos'], n, -int(abs(math.sin(n['anim'] / 110.0)) * 3) if n['moving'] else 0, None))
     if area == 'hunt':
         for e in HM:
             if e['alive']: ents.append((e['pos'][1], hm_img(e), e['pos'], None, -int(abs(math.sin(e['anim'] / 140.0)) * 4), e))
-    if area == 'town':
-        for c_ in FARM:
-            if c_['crop']:
-                spr_ = FARM_IMG[c_['crop']][crop_stage(c_)]
-                screen.blit(spr_, (int(c_['x'] - cx + ox) - spr_.get_width() // 2, int(c_['y'] - cy + oy) - spr_.get_height() + 8))
     ents.append((P.y, hero.get(P.d, P.step, P.flip, P.moving), (P.x, P.y), None, 0, None))
     near = near_npc() if mode == 'explore' else None; t = pygame.time.get_ticks()
     for _, im, (x, y), n, bob, e in sorted(ents, key=lambda q: q[0]):
+        if bob is None: screen.blit(im, (int(x - cx + ox), int(y - cy + oy))); continue
         sx, sy = int(x - cx + ox), int(y - cy + oy)
         if sx < -150 or sx > W + 150 or sy < -150 or sy > H + 150: continue
         if S['shadows']: screen.blit(SHADOW, (sx - 20, sy - 9))
@@ -1720,11 +1688,19 @@ def draw_outdoor():
         elif n and S['names']:
             tg = tag(n['name'], (255, 240, 190)); screen.blit(tg, (sx - tg.get_width() // 2, top - 22))
             if n is near: screen.blit(icon_s('down', 20, C_GOLD), (sx - 10, top - 44 + int(3 * math.sin(t / 160.0))))
-    if area == 'town': screen.blit(GATE_IMG, (TOWN['gate_over'][0] - cx + ox, TOWN['gate_over'][1] - cy + oy))
-    wv = warm_level()
-    if wv > 0.005: warm_veil(wv)
     lv = night_level()
-    if lv > 0.005: night_veil(lv)
+    if area == 'town':
+        dusk_tint()
+        if lv > 0.005: night_veil(lv)
+        V.draw_effects(screen, TOWN, cx, cy, ox, oy, W, H, t, lv)
+        if mode == 'explore' and loc is None:
+            fk = V.facing_plot(P.x, P.y, P.d, P.flip)
+            if fk:
+                fr = V.plot_rect(fk).move(-cx + ox, -cy + oy); pulse = 150 + int(90 * math.sin(t / 180.0))
+                pygame.draw.rect(screen, (pulse, int(pulse * 0.85), 70), fr, 3, border_radius=4)
+                tg = tag(farm_hint(fk), C_GOLD); screen.blit(tg, (fr.centerx - tg.get_width() // 2, fr.y - tg.get_height() - 6))
+    elif lv > 0.005: night_veil(lv)
+    vignette()
     if debug:
         if area == 'town':
             for b in BLOCK: pygame.draw.rect(screen, (255, 0, 0), b.move(-cx + ox, -cy + oy), 2)
@@ -1751,8 +1727,6 @@ def draw_interior():
         if nm and S['names']:
             tg = tag(nm, (255, 240, 190)); screen.blit(tg, (sx - tg.get_width() // 2, sy - im.get_height() - 18))
             if n is near: screen.blit(icon_s('down', 20, C_GOLD), (sx - 10, sy - im.get_height() - 40 + int(3 * math.sin(t / 160.0))))
-    # v1.3: bingkai pintu digambar di atas karakter, jadi kaki karakter terlihat masuk ke dalam pintu
-    screen.blit(c['door_img'], (c['ox'] + c['door_pos'][0], c['oy'] + c['door_pos'][1]))
     if debug:
         for r in c['floor']: pygame.draw.rect(screen, (0, 255, 0), pygame.Rect(c['ox'] + r.x * s, c['oy'] + r.y * s, r.w * s, r.h * s), 2)
         for r in c['solid']: pygame.draw.rect(screen, (255, 0, 0), pygame.Rect(c['ox'] + r.x * s, c['oy'] + r.y * s, r.w * s, r.h * s), 2)
@@ -2077,7 +2051,7 @@ def close_inv():
 def recover():
     global mode, loc, cur, dialog, menu, battle, err_info, area
     err_info = None; dialog = menu = battle = None; loc = cur = None
-    if area == 'town' and blocked(P.x, P.y): P.x, P.y = TOWN["spawn"][0] + 0.0, TOWN["spawn"][1] + 0.0
+    if area == 'town' and blocked(P.x, P.y): P.x, P.y = float(V.SPAWN[0]), float(V.SPAWN[1])
     if area == 'hunt' and not hunt_ok(feet(P.x, P.y)): P.x, P.y = float(HENTRY[0]), float(HENTRY[1])
     reset_touch(); mode = 'explore' if game_started else 'title'
     if mode == 'title': enter_title()
@@ -2283,7 +2257,7 @@ def update_explore(dt):
     global walk_t, enc_at, door_lock
     now = pygame.time.get_ticks(); kk = pygame.key.get_pressed()
     prev_tm = P.tm; P.tm += dt / MS_PER_MIN
-    if P.tm >= 1440: P.tm -= 1440; P.day += 1
+    if P.tm >= 1440: P.tm -= 1440; P.day += 1; on_new_day()
     if prev_tm < NIGHT_START <= P.tm: on_night()
     elif prev_tm < NIGHT_END <= P.tm: on_morning()
     kx = int(bool(kk[K.K_RIGHT] or kk[K.K_d])) - int(bool(kk[K.K_LEFT] or kk[K.K_a]))
@@ -2306,8 +2280,7 @@ def update_explore(dt):
         else:
             k = 0.85 / cur['s']; ox, oy = P.ix, P.iy
             if int_ok(P.ix + ddx * k, P.iy): P.ix += ddx * k
-            ny = P.iy + ddy * k
-            if int_ok(P.ix, ny) or (ddy > 0 and door_ok(P.ix, ny)): P.iy = ny
+            if int_ok(P.ix, P.iy + ddy * k): P.iy += ddy * k
     if now < door_lock: return
     f = feet(P.x, P.y)
     if loc is None:
@@ -2330,7 +2303,6 @@ def update_explore(dt):
 
 def update(dt):
     _dq = daily_quest.poll()
-    if loc is None: farm_tick(dt)
     if _dq: apply_daily(_dq)
     if mode == 'explore':
         update_explore(dt)

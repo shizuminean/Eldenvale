@@ -1,27 +1,29 @@
-ELDENVALE RPG v1.8 (desa gaya referensi)
-  - Alun-alun batu bulat dengan air mancur, lampu, dan papan pengumuman.
-  - Jembatan kayu menyeberangi sungai di timur.
-  - Kebun dengan pagar, hutan dan semak lebih rapat di tepi desa.
+ELDENVALE RPG v1.5 (Python + pygame, PC & Android)
 
-ELDENVALE RPG v1.7 (desa lebih hidup & tabrakan penuh)
-  - Tabrakan kini menutupi seluruh sprite: rumah, pohon, semak, batu, perabot, dan meja tidak bisa diinjak.
-  - Desa diisi lebih banyak dekorasi: pohon, semak berbunga, batu, rumput, pasar, lampu, dan pagar.
-  - Interior: seluruh perabot tidak bisa diinjak, dan spawn dipindah ke tempat yang bebas.
-  - Ukuran game dikecilkan (gambar besar dikompres ke 256 warna).
+YANG BARU DI v1.5  (desa & rumah dibangun ulang, sistem pertanian)
+  - Desa lama (map.png) dan SEMUA interior lama (assets/int/*.png) dihapus. Desa baru dibangun lewat KODE
+    (village.py) di atas LATAR assets/town_bg.png (plaza silang, tebing, sungai, air terjun, kolam).
+    Gambar diskalakan 2x; tebing & air menjadi tabrakan lewat assets/town_mask.png. Bangunan, ladang,
+    lampu, pohon, semak, batu, dan bunga ditata lewat kode di teras-teras yang terjangkau.
+  - Rumah, pohon, dan tanaman diurutkan menurut Y: karakter bisa berjalan DI BELAKANG pohon & atap.
+  - Interior baru untuk 6 bangunan (Penginapan, Gereja, Toko Ramuan, Pandai Besi, Rumah Nenek Wren,
+    Guild di kincir angin): lantai papan/batu, dinding kayu, perabot, karpet, jendela, banner.
+  - Tampilan: kilau air, asap cerobong, kupu-kupu (siang) & kunang-kunang (malam), cahaya lampu dan
+    jendela saat malam, nuansa senja/fajar, vinyet, bayangan di bawah objek.
+  - SISTEM PERTANIAN (96 petak di ladang barat daya, pagar kayu):
+      Berdiri menghadap petak, tekan Z / Spasi / tombol A:
+      1) tanah kosong -> dicangkul   2) tanah dicangkul -> pilih benih lalu tanam
+      3) tanaman -> disiram (tanaman hanya tumbuh pada hari ia disiram, atau saat hujan 22%)
+      4) tanaman matang -> panen (1-3 hasil + sedikit XP)
+    8 tanaman: Gandum, Lobak, Wortel, Kubis, Kentang, Tomat, Terong, Ubi Manis (2-4 hari tumbuh).
+    Petani Tomo (kios dekat ladang) menjual benih dan membeli hasil panen. Hasil panen juga bisa dimakan.
+    Tidur di penginapan (kini bisa juga siang hari) melompat ke pagi dan menumbuhkan tanaman.
+    Data ladang ikut tersimpan di save.
 
-ELDENVALE RPG v1.6 (siang-sore-malam)
-  - Sore: nuansa oranye mulai pukul 15.00, paling hangat menjelang senja.
-  - Malam: layar makin gelap dari 19.00, gelap penuh sampai 04.30, lalu pudar menuju pagi.
-  - Penginapan: di sore dan malam ada pilihan 'Ya, tidur sampai pagi' (10 G). Pilih Ya untuk tidur, Tutup untuk batal.
-
-ELDENVALE RPG v1.5 (desa dibangun ulang)
-  - Desa baru dari aset tanah, bangunan, pohon & lahan. Tabrakan: air, batu, bangunan, pohon, tembok.
-    Pintu rumah & gerbang selatan hanya dimasuki dengan berjalan ke ambangnya (tidak menginjak bangunan).
-  - Kincir angin = Guild Petualang. Gerbang selatan menuju Hutan Berburu.
-  - FARMING: tanam benih di petak tanah (tekan Z/Spasi di dekat petak), tunggu tumbuh (~2 menit),
-    lalu panen. Benih dibeli di Lars si Petani (dekat kebun). Hasil panen dijual di toko Orn.
-
-ELDENVALE RPG v1.2 (Python + pygame, PC & Android)
+DATA & KODE
+  village.py : desa, interior, logika ladang (CROPS ada di data.py)
+  assets/spr : sprite hasil potong dari sheet bangunan/tanaman/furnitur
+  Save lama tetap bisa dimuat (posisi di dalam bangunan baru otomatis dipindah ke alun-alun).
 
 YANG BARU DI v1.2
   - Desa: tidak ada lagi monster & battle mendadak di rumput. Monster hanya di Hutan Berburu.
