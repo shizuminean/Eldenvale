@@ -48,7 +48,7 @@ def log_exc(where=''):
 
 
 # ---------------- setelan ----------------
-S = {'fps': 60, 'show_fps': False, 'shadows': True, 'names': True, 'wander': True, 'shake': True,
+S = {'fx': True, 'fps': 60, 'show_fps': False, 'shadows': True, 'names': True, 'wander': True, 'shake': True,
      'touch': 'auto', 'tsize': 1, 'talpha': 1, 'speed': 1}
 S0 = dict(S)
 
@@ -763,7 +763,7 @@ def hunt_ok(r):
 def blocked(x, y, skip=None):
     r = feet(x, y)
     if area == 'town':
-        if TOWN.hit(r) or any(r.colliderect(b) for b in BLOCK): return True
+        if TOWN.hit(r): return True
     elif not hunt_ok(r): return True
     for n in anpcs():
         if n is not skip and r.colliderect(feet(*n['pos']).inflate(10, 6)): return True
@@ -780,7 +780,9 @@ def face(n, tx, ty):
 def update_npcs(dt):
     t = pygame.time.get_ticks()
     for n in anpcs():
-        x, y = n['pos']; near = math.hypot(x - P.x, y - P.y) < 85
+        x, y = n['pos']
+        if abs(x - P.x) > 1000 or abs(y - P.y) > 700: continue   # jauh dari layar: lewati (hemat CPU)
+        near = math.hypot(x - P.x, y - P.y) < 85
         if mode != 'explore' or near or not S['wander'] or n.get('still'):
             n['moving'] = False; n['tgt'] = None
             if mode == 'explore' and near: face(n, P.x, P.y)
@@ -918,13 +920,18 @@ def build_interior(iid):
     s = min((W - 40) / float(im.get_width()), (H - 40) / float(im.get_height()), 2.2)
     surf = pygame.transform.smoothscale(im, (int(im.get_width() * s), int(im.get_height() * s)))
     k = s * 0.7
-    nm, who, kind = INTERIORS[iid]['npc']
-    npc = dict(name=nm, who=who, kind=kind, pos=list(r['npc_pos']), d='down', flip=False, moving=False, anim=0)
+    spec = INTERIORS[iid]['npc']
+    npcs, shs = [], {}
+    if spec:
+        nm, who, kind = spec
+        npcs.append(dict(name=nm, who=who, kind=kind, pos=list(r['npc_pos']), d='down', flip=False, moving=False, anim=0)); shs[who] = Sheet(who, h=int(70 * k))
+    # perabot diskalakan sekali; digambar bersama pemain menurut sumbu-Y (pemain bisa berada di belakang perabot)
+    objs = [(by, pygame.transform.smoothscale(o, (max(1, int(o.get_width() * s)), max(1, int(o.get_height() * s)))), int(x * s), int(y * s)) for (by, o, x, y) in r['objs']]
     c = dict(id=iid, s=s, surf=surf, ox=(W - surf.get_width()) // 2, oy=(H - surf.get_height()) // 2, floor=r['floor'],
-             solid=r['solid'], exit=r['exit'], spawn=r['spawn'],
-             hs=Sheet('hero', scale=HS * k), sh={who: Sheet(who, h=int(70 * k))}, npcs=[npc], k=k)
+             solid=r['solid'], exit=r['exit'], spawn=r['spawn'], links=r['links'], label=r['label'], objs=objs,
+             hs=Sheet('hero', scale=HS * k), sh=shs, npcs=npcs, k=k)
     c['sleep'] = []
-    if iid == 'inn':   # penduduk tidur di penginapan saat malam
+    if r['sleep']:   # penduduk tidur di kamar penginapan saat malam
         for n_, pos_ in zip(NPCS, r['sleep']):
             sh_ = Sheet(n_['who'], h=int(70 * k))
             c['sleep'].append(dict(im=pygame.transform.rotate(sh_.get('down', 0, False, False), 90), pos=pos_))
@@ -1512,7 +1519,7 @@ def draw_title():
     cx = int(300 + (MW - W - 600) * k) if MW > W + 600 else 0; cy = int(clamp((MH - H) * (0.40 + 0.1 * math.sin(t / 9000.0)), 0, max(0, MH - H)))
     screen.fill((0, 0, 0)); screen.blit(MAP, ((W - MW) // 2 if MW < W else 0, 0), (cx, cy, min(W, MW), min(H, MH)))
     for (_by, _im, _x, _y) in V.visible_objs(TOWN, cx, cy, W, H): screen.blit(_im, (_x - cx, _y - cy))
-    V.draw_effects(screen, TOWN, cx, cy, 0, 0, W, H, t, 0.0)
+    if S['fx']: V.draw_effects(screen, TOWN, cx, cy, 0, 0, W, H, t, 0.0)
     veil(96, (6, 10, 28)); fade_v((0, 0, W, int(H * 0.5)), 150, 0); fade_v((0, int(H * 0.55), W, H - int(H * 0.55)), 0, 190)
     ty = int(H * 0.085); a = rt("ELDENVALE", F_T, C_GOLD)
     txt("ELDENVALE", W // 2, ty, F_T, C_GOLD, True, 'c')
@@ -1690,9 +1697,9 @@ def draw_outdoor():
             if n is near: screen.blit(icon_s('down', 20, C_GOLD), (sx - 10, top - 44 + int(3 * math.sin(t / 160.0))))
     lv = night_level()
     if area == 'town':
-        dusk_tint()
+        if S['fx']: dusk_tint()
         if lv > 0.005: night_veil(lv)
-        V.draw_effects(screen, TOWN, cx, cy, ox, oy, W, H, t, lv)
+        if S['fx']: V.draw_effects(screen, TOWN, cx, cy, ox, oy, W, H, t, lv)
         if mode == 'explore' and loc is None:
             fk = V.facing_plot(P.x, P.y, P.d, P.flip)
             if fk:
@@ -1700,7 +1707,7 @@ def draw_outdoor():
                 pygame.draw.rect(screen, (pulse, int(pulse * 0.85), 70), fr, 3, border_radius=4)
                 tg = tag(farm_hint(fk), C_GOLD); screen.blit(tg, (fr.centerx - tg.get_width() // 2, fr.y - tg.get_height() - 6))
     elif lv > 0.005: night_veil(lv)
-    vignette()
+    if S['fx']: vignette()
     if debug:
         if area == 'town':
             for b in BLOCK: pygame.draw.rect(screen, (255, 0, 0), b.move(-cx + ox, -cy + oy), 2)
@@ -1712,26 +1719,32 @@ def draw_outdoor():
 
 def draw_interior():
     c = cur; s = c['s']; screen.fill((4, 6, 14)); screen.blit(c['surf'], (c['ox'], c['oy']))
-    if is_night():
-        for sl in c.get('sleep', []):
-            sx, sy = c['ox'] + int(sl['pos'][0] * s), c['oy'] + int(sl['pos'][1] * s)
-            im_ = sl['im']; screen.blit(im_, (sx - im_.get_width() // 2, sy - im_.get_height() // 2))
-            txt("z z Z", sx, sy - im_.get_height() // 2 - 12, F_XS, C_MUTE, True, 'c')
     ents = [(n['pos'][1], c['sh'][n['who']].get(n['d'], 0, n['flip'], False), n['pos'], n['name'], n) for n in c['npcs']]
     ents.append((P.iy, c['hs'].get(P.d, P.step, P.flip, P.moving), (P.ix, P.iy), None, None))
+    for (by, im, x, y) in c['objs']: ents.append((by, im, (x, y), None, 'obj'))
+    if is_night():
+        for sl in c.get('sleep', []):
+            im_ = sl['im']; ents.append((sl['pos'][1] + 40, im_, (int(sl['pos'][0] * s) - im_.get_width() // 2, int(sl['pos'][1] * s) - im_.get_height() // 2), None, 'zzz'))
     near = near_npc() if mode == 'explore' else None; t = pygame.time.get_ticks()
     for _, im, (x, y), nm, n in sorted(ents, key=lambda e: e[0]):
+        if n == 'obj' or n == 'zzz':
+            screen.blit(im, (c['ox'] + x, c['oy'] + y))
+            if n == 'zzz': txt("z z Z", c['ox'] + x + im.get_width() // 2, c['oy'] + y - 12, F_XS, C_MUTE, True, 'c')
+            continue
         sx, sy = c['ox'] + int(x * s), c['oy'] + int(y * s)
         if S['shadows']: screen.blit(SHADOW, (sx - 20, sy - 9))
         screen.blit(im, (sx - im.get_width() // 2, sy - im.get_height() + 6))
         if nm and S['names']:
             tg = tag(nm, (255, 240, 190)); screen.blit(tg, (sx - tg.get_width() // 2, sy - im.get_height() - 18))
             if n is near: screen.blit(icon_s('down', 20, C_GOLD), (sx - 10, sy - im.get_height() - 40 + int(3 * math.sin(t / 160.0))))
+    for lk in c['links']:   # petunjuk tangga
+        r_ = lk['rect']; f_ = ifeet(P.ix, P.iy)
+        if f_.inflate(60, 60).colliderect(r_):
+            tg = tag(lk['label'], C_GOLD); screen.blit(tg, (c['ox'] + int((r_.centerx) * s) - tg.get_width() // 2, c['oy'] + int(r_.bottom * s) + 4))
     if debug:
         for r in c['floor']: pygame.draw.rect(screen, (0, 255, 0), pygame.Rect(c['ox'] + r.x * s, c['oy'] + r.y * s, r.w * s, r.h * s), 2)
         for r in c['solid']: pygame.draw.rect(screen, (255, 0, 0), pygame.Rect(c['ox'] + r.x * s, c['oy'] + r.y * s, r.w * s, r.h * s), 2)
-    # judul lokasi
-    nm = DOOR_NAME.get(loc, '')
+    nm = c.get('label') or DOOR_NAME.get(loc, '')
     if nm: tg = tag(nm, C_GOLD); screen.blit(tg, ((W - tg.get_width()) // 2, H - SAFE_Y - 30))
 
 
@@ -1754,12 +1767,12 @@ def err_btn():
 # ============================================================ 5. TAS & BATTLE
 TYPE_NAME = {'weapon': 'Senjata', 'helm': 'Helm', 'armor': 'Baju', 'cloak': 'Jubah', 'neck': 'Aksesori', 'boots': 'Sepatu',
              'use': 'Ramuan / Makanan', 'mat': 'Bahan', 'misc': 'Lain-lain'}
-PRESETS = [('Tinggi', dict(fps=60, shadows=True, names=True, wander=True, shake=True)),
-           ('Sedang', dict(fps=45, shadows=True, names=False, wander=True, shake=False)),
-           ('Rendah', dict(fps=30, shadows=False, names=False, wander=False, shake=False))]
+PRESETS = [('Tinggi', dict(fps=60, fx=True, shadows=True, names=True, wander=True, shake=True)),
+           ('Sedang', dict(fps=45, fx=False, shadows=True, names=False, wander=True, shake=False)),
+           ('Rendah', dict(fps=30, fx=False, shadows=False, names=False, wander=False, shake=False))]
 YN = {True: 'Ya', False: 'Tidak'}
 SET_ROWS = [('fps', 'FPS maksimum', [30, 45, 60, 90, 120], {}), ('show_fps', 'Tampilkan FPS', [False, True], YN),
-            ('shadows', 'Bayangan karakter', [True, False], YN), ('names', 'Nama di atas NPC', [True, False], YN),
+            ('fx', 'Efek visual (air, cahaya, kupu-kupu)', [True, False], YN), ('shadows', 'Bayangan karakter', [True, False], YN), ('names', 'Nama di atas NPC', [True, False], YN),
             ('wander', 'NPC berkeliaran', [True, False], YN), ('shake', 'Getar layar di battle', [True, False], YN),
             ('touch', 'Kontrol sentuh', ['auto', 'on', 'off'], {'auto': 'Otomatis', 'on': 'Selalu', 'off': 'Sembunyi'}),
             ('tsize', 'Ukuran tombol', [0.8, 1, 1.2], {0.8: 'Kecil', 1: 'Sedang', 1.2: 'Besar'}),
@@ -2254,7 +2267,7 @@ enc_at = 240.0
 
 
 def update_explore(dt):
-    global walk_t, enc_at, door_lock
+    global walk_t, enc_at, door_lock, cur
     now = pygame.time.get_ticks(); kk = pygame.key.get_pressed()
     prev_tm = P.tm; P.tm += dt / MS_PER_MIN
     if P.tm >= 1440: P.tm -= 1440; P.day += 1; on_new_day()
@@ -2298,7 +2311,12 @@ def update_explore(dt):
                         if random.random() < 0.55: start_battle(z); return
                         break
         elif f.colliderect(HEXIT): enter_area('town', GATE_OUT); return
-    elif ifeet(P.ix, P.iy).colliderect(cur['exit']): leave()
+    else:
+        fi = ifeet(P.ix, P.iy)
+        for lk in cur['links']:
+            if fi.colliderect(lk['rect']):
+                cur = build_interior(lk['to']); P.ix, P.iy = lk['spawn']; P.d = 'down'; door_lock = now + 700; reset_touch(); return
+        if fi.colliderect(cur['exit']): leave()
 
 
 def update(dt):

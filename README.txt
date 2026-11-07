@@ -20,6 +20,14 @@ YANG BARU DI v1.5  (desa & rumah dibangun ulang, sistem pertanian)
     Tidur di penginapan (kini bisa juga siang hari) melompat ke pagi dan menumbuhkan tanaman.
     Data ladang ikut tersimpan di save.
 
+PERBAIKAN (lag & interior)
+  - Lag: tabrakan desa kini memakai hash spasial (bukan 177 kotak tiap cek), kilau air per-bucket, NPC jauh
+    tidak diperbarui. Efek visual bisa dimatikan: Setelan > "Efek visual" (preset Sedang/Rendah mematikannya).
+  - Perabot interior kini digambar menurut sumbu-Y bersama pemain/NPC: pemain berdiri di belakang meja,
+    kasur, rak, dll. dan tertutup perabot, tidak lagi 'menginjak' perabot.
+  - Penginapan sekarang 2 lantai: lobi/kedai di lantai 1, tangga di kanan menuju kamar tidur lantai 2.
+    Kasur diperkecil. Penduduk tidur di kamar lantai 2 saat malam.
+
 DATA & KODE
   village.py : desa, interior, logika ladang (CROPS ada di data.py)
   assets/spr : sprite hasil potong dari sheet bangunan/tanaman/furnitur

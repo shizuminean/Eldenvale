@@ -153,6 +153,7 @@ BOSS_NEAR, BOSS_FAR = 'Raja Slime', 'Vampir'
 # v1.5: desa & interior kini dibangun lewat kode (village.py). Di sini hanya NPC penghuni tiap rumah.
 INTERIORS = {
     'inn': dict(npc=('Rosalind', 'n01', 'inn')),
+    'inn2': dict(npc=None),
     'potion': dict(npc=('Penyihir Orn', 'n25', 'shop')),
     'smith': dict(npc=('Brom si Pandai Besi', 'n02', 'smith')),
     'green': dict(npc=('Nenek Wren', 'n04', 'granny')),

@@ -157,6 +157,11 @@ class Town:
         """True jika kotak r menyentuh sel tebing/air/tepi peta."""
         if r.left < 24 or r.top < 24 or r.right > MW - 24 or r.bottom > MH - 8: return True
         m, cw = self.mask, self.mw
+        g = self.grid
+        for gy in range(r.top >> 6, (r.bottom >> 6) + 1):
+            for gx in range(r.left >> 6, (r.right >> 6) + 1):
+                for b in g.get((gx, gy), ()):
+                    if r.colliderect(b): return True
         for cy in range(max(0, r.top // CELL), min(self.mh, r.bottom // CELL + 1)):
             row = m[cy]
             for cx in range(max(0, r.left // CELL), min(cw, r.right // CELL + 1)):
@@ -296,6 +301,13 @@ def build_town():
     T_.ground, T_.objs, T_.block, T_.doors, T_.gate, T_.gate_out = ground, objs, block, doors, gate, gate_out
     T_.glows, T_.lamps, T_.smoke, T_.water, T_.soil = glows, lamp_pts, smoke, water_tiles, soil
     T_.mask, T_.mw, T_.mh, T_.size = mask, mw, mh, (MW, MH)
+    T_.grid = {}
+    for b in block:
+        for gy in range(b.top >> 6, (b.bottom >> 6) + 1):
+            for gx in range(b.left >> 6, (b.right >> 6) + 1): T_.grid.setdefault((gx, gy), []).append(b)
+    T_.wb = {}
+    for i, (x, y) in enumerate(water_tiles):
+        if i % 3 == 0: T_.wb.setdefault((x >> 8, y >> 8), []).append((x, y, i))
     T_.fauna = [(x, y, rng.random() * 6.28) for (x, y) in rng.sample(freec, min(10, len(freec)))]
     return T_
 
@@ -339,17 +351,18 @@ def draw_farm(screen, town, plots, cx, cy, ox, oy, W, H):
 
 
 def draw_effects(screen, town, cx, cy, ox, oy, W, H, t, night):
-    """Kilau air, asap cerobong, kupu-kupu/kunang-kunang, cahaya lampu & jendela saat malam."""
-    for i, (x, y) in enumerate(town.water):
-        sx, sy = x - cx + ox, y - cy + oy
-        if sx < -TS or sx > W or sy < -TS or sy > H: continue
-        ph = (t / 900.0 + i * 0.37) % 1.0
-        if ph < 0.35:
-            a = int(255 * math.sin(ph / 0.35 * math.pi))
-            pygame.draw.rect(screen, (150 + a // 4, 214 + a // 8, 252), (sx + (i * 7) % 26, sy + (i * 13) % 30, 8, 2))
+    """Kilau air, asap cerobong, kupu-kupu/kunang-kunang, cahaya lampu & jendela saat malam (hanya bila efek visual aktif)."""
+    for bx in range(max(0, int(cx) >> 8), (int(cx + W) >> 8) + 1):
+        for by_ in range(max(0, int(cy) >> 8), (int(cy + H) >> 8) + 1):
+            for (x, y, i) in town.wb.get((bx, by_), ()):
+                ph = (t / 900.0 + i * 0.37) % 1.0
+                if ph < 0.35:
+                    a = int(255 * math.sin(ph / 0.35 * math.pi))
+                    pygame.draw.rect(screen, (150 + a // 4, 214 + a // 8, 252), (x - cx + ox + (i * 7) % 26, y - cy + oy + (i * 13) % 30, 8, 2))
     for k, (x, y) in enumerate(town.smoke):
-        for j in range(5):
-            ph = ((t / 2600.0) + j / 5.0 + k * 0.3) % 1.0
+        if x - cx + ox < -60 or x - cx + ox > W + 60 or y - cy + oy < -120 or y - cy + oy > H + 60: continue
+        for j in range(4):
+            ph = ((t / 2600.0) + j / 4.0 + k * 0.3) % 1.0
             sx = x - cx + ox + math.sin(ph * 5 + j) * 8 + ph * 18; sy = y - cy + oy - ph * 70
             r = int(5 + ph * 11); g = int(236 - ph * 40)
             blob(screen, int(sx), int(sy), r, (g, g, g + 6), int(150 * (1 - ph)))
@@ -371,8 +384,7 @@ def draw_effects(screen, town, cx, cy, ox, oy, W, H, t, night):
         for (x, y, r, col) in town.glows:
             sx, sy = x - cx + ox, y - cy + oy
             if sx < -r or sx > W + r or sy < -r or sy > H + r: continue
-            g = glow_surf(r, col)
-            screen.blit(g, (sx - r, sy - r), special_flags=pygame.BLEND_RGBA_ADD) if night > 0.3 else screen.blit(g, (sx - r, sy - r))
+            screen.blit(glow_surf(r, col), (sx - r, sy - r))
 
 
 # ------------------------------------------------------------------ ladang (logika)
@@ -421,7 +433,7 @@ def plot_rect(key):
 class Room:
     def __init__(s, W, H, wh=96, floor='wood', seed=1):
         s.W, s.H, s.wh, s.rng = W, H, wh, random.Random(seed)
-        s.surf = pygame.Surface((W, H)); s.solid = []; s.items = []; s.ground = []; s.wallitems = []
+        s.surf = pygame.Surface((W, H)); s.solid = []; s.items = []; s.ground = []; s.wallitems = []; s.links = []
         s.floor = floor
         s._floor(); s._walls()
 
@@ -476,7 +488,7 @@ class Room:
         pygame.draw.rect(s.surf, (176, 172, 160), (cx - 46, H - 18, 92, 18)); pygame.draw.rect(s.surf, (120, 40, 36), (cx - 38, H - 18, 76, 14), border_radius=2)
         pygame.draw.rect(s.surf, (214, 170, 70), (cx - 38, H - 18, 76, 14), 2, border_radius=2)
 
-    def put(s, name, cx, by, w=None, h=None, fp=(0.9, 0.45), solid=True, ground=False, wall=False, flip=False):
+    def put(s, name, cx, by, w=None, h=None, fp=(0.94, 0.55), solid=True, ground=False, wall=False, flip=False):
         im = spr(name, w=w, h=h, flip=flip); iw, ih = im.get_size()
         (s.ground if ground else s.wallitems if wall else s.items).append((by, im, cx - iw // 2, by - ih))
         if solid and not ground and not wall:
@@ -489,41 +501,57 @@ class Room:
         pygame.draw.rect(s.surf, (222, 176, 66), (x + 5, y + 5, w - 10, h - 10), 2, border_radius=2)
         for yy in range(y + 12, y + h - 8, 14): pygame.draw.rect(s.surf, _shade(col, 18), (x + 10, yy, w - 20, 2))
 
-    def finish(s, npc_pos, spawn_y=None, sleep=()):
+    def finish(s, npc_pos, spawn_y=None, sleep=(), label=None, exit_door=True, spawn=None):
         for (_, im, x, y) in s.ground: s.surf.blit(im, (x, y))
         for (_, im, x, y) in sorted(s.wallitems, key=lambda o: o[0]): s.surf.blit(im, (x, y))
-        for (by, im, x, y) in sorted(s.items, key=lambda o: o[0]):
-            shadow(s.surf, x + im.get_width() // 2, by - 2, int(im.get_width() * 0.8), 10, 60)
-            s.surf.blit(im, (x, y))
+        for (by, im, x, y) in s.items: shadow(s.surf, x + im.get_width() // 2, by - 2, int(im.get_width() * 0.8), 10, 60)
         W, H, wh, cx = s.W, s.H, s.wh, s.W // 2
         vg = pygame.Surface((W, H), pygame.SRCALPHA)   # vinyet halus
         for i in range(26): pygame.draw.rect(vg, (20, 8, 0, int(4 + (26 - i) * 2.2)), (i, i, W - 2 * i, H - 2 * i), 1)
         s.surf.blit(vg, (0, 0))
         floor = [pygame.Rect(18, wh, W - 36, H - wh - 18), pygame.Rect(cx - 44, H - 40, 88, 40)]
-        return dict(surf=s.surf, floor=floor, solid=s.solid, exit=pygame.Rect(cx - 38, H - 14, 76, 12), spawn=(cx, H - 62),
-                    npc_pos=npc_pos, sleep=list(sleep))
+        return dict(surf=s.surf, objs=sorted(s.items, key=lambda o: o[0]), floor=floor, solid=s.solid,
+                    exit=pygame.Rect(cx - 38, H - 14, 76, 12) if exit_door else pygame.Rect(-500, -500, 1, 1),
+                    spawn=spawn or (cx, H - 62), npc_pos=npc_pos, sleep=list(sleep), links=s.links, label=label)
+
+
+def _stairs(r, cx, by, to, spawn, label):
+    r.put('ladder', cx, by, w=64, fp=(0.9, 0.35))
+    r.links.append(dict(rect=pygame.Rect(cx - 30, by + 4, 60, 24), to=to, spawn=spawn, label=label))
 
 
 def _inn():
-    r = Room(640, 480, 96, 'wood', 11)
-    r.put('window_a', 150, 84, h=62, wall=True); r.put('window_a', 490, 84, h=62, wall=True)
-    r.put('banner_a', 70, 98, h=70, wall=True); r.put('banner_b', 570, 98, h=70, wall=True)
-    r.put('fireplace', 320, 134, w=112, fp=(0.8, 0.3))
-    r.put('rug_blue', 320, 400, w=230, solid=False, ground=True)
+    """Penginapan lantai 1: lobi / kedai. Tangga di kanan menuju kamar tidur lantai 2."""
+    r = Room(640, 440, 96, 'wood', 11)
+    r.put('window_a', 90, 84, h=60, wall=True); r.put('window_a', 530, 84, h=60, wall=True)
+    r.put('banner_a', 215, 98, h=66, wall=True); r.put('banner_b', 445, 98, h=66, wall=True)
+    r.put('shelf_w', 330, 100, w=128, wall=True)
+    r.put('fireplace', 120, 138, w=108, fp=(0.8, 0.3))
+    _stairs(r, 572, 150, 'inn2', (574, 200), 'Naik ke kamar')
+    r.put('rug_blue', 200, 392, w=210, solid=False, ground=True); r.put('rug_red', 478, 372, w=150, solid=False, ground=True)
+    r.put('desk', 300, 236, w=104, fp=(0.96, 0.6)); r.put('desk', 404, 236, w=104, fp=(0.96, 0.6))
+    r.put('barrel_c', 238, 232, w=40, fp=(0.8, 0.6)); r.put('lantern_b', 470, 236, w=26, fp=(0.6, 0.5))
+    r.put('table_big', 200, 360, w=112, fp=(0.86, 0.55)); r.put('chair_a', 128, 362, w=32, fp=(0.8, 0.55)); r.put('chair_a', 272, 362, w=32, fp=(0.8, 0.55), flip=True)
+    r.put('table_fl', 478, 340, w=96, fp=(0.86, 0.55)); r.put('chair_a', 414, 346, w=30, fp=(0.8, 0.55)); r.put('chair_a', 542, 346, w=30, fp=(0.8, 0.55), flip=True)
+    r.put('barrel_a', 52, 300, w=44, fp=(0.8, 0.55)); r.put('chest', 600, 250, w=58, fp=(0.9, 0.55)); r.put('potplant', 40, 412, w=36, fp=(0.7, 0.5))
+    return r.finish((352, 192), label='Penginapan - Lantai 1', spawn=(320, 372))
+
+
+def _inn2():
+    """Penginapan lantai 2: kamar tidur (kasur kecil + meja nakas)."""
+    r = Room(640, 440, 96, 'wood', 12)
+    for x in (110, 320, 520): r.put('window_a', x, 84, h=60, wall=True)
+    _stairs(r, 572, 150, 'inn', (574, 200), 'Turun ke lobi')
+    r.put('rug_blue', 300, 428, w=150, solid=False, ground=True)
     beds = []
-    for i, x in enumerate((70, 148)):
-        r.put('bed_blue' if i % 2 == 0 else 'bed_green', x, 262, w=70, fp=(0.9, 0.9)); beds.append((x, 220))
-    for i, x in enumerate((492, 570)):
-        r.put('bed_green' if i % 2 == 0 else 'bed_blue', x, 262, w=70, fp=(0.9, 0.9)); beds.append((x, 220))
-    for i, x in enumerate((70, 148)):
-        r.put('bed_blue2', x, 410, w=70, fp=(0.9, 0.9)); beds.append((x, 368))
-    for i, x in enumerate((492, 570)):
-        r.put('bed_blue2', x, 410, w=70, fp=(0.9, 0.9)); beds.append((x, 368))
-    r.put('table_big', 320, 340, w=130, fp=(0.8, 0.5)); r.put('chair_a', 240, 346, w=34, fp=(0.8, 0.5)); r.put('chair_a', 400, 346, w=34, fp=(0.8, 0.5), flip=True)
-    r.put('desk', 250, 202, w=100, fp=(0.9, 0.55)); r.put('barrel_c', 396, 205, w=44, fp=(0.8, 0.5))
-    r.put('potplant', 36 + 18, 130, w=38, fp=(0.6, 0.4)); r.put('lantern_a', 590, 200, w=30, fp=(0.6, 0.3))
-    spots = beds + [(250, 440), (390, 440)]
-    return r.finish((340, 190), sleep=spots)
+    for row, by in enumerate((206, 352)):
+        for i, x in enumerate((84, 224, 364)):
+            r.put('bed_blue' if (i + row) % 2 == 0 else 'bed_green', x, by, w=50, fp=(0.96, 0.8)); beds.append((x, by - 38))
+            r.put('shelf_s', x + 44, by - 2, w=26, fp=(0.9, 0.5))
+    r.put('cupboard', 574, 330, w=62, fp=(0.94, 0.55)); r.put('potplant', 592, 410, w=34, fp=(0.7, 0.5)); r.put('lantern_a', 470, 300, w=26, fp=(0.6, 0.5))
+    r.put('chest', 520, 400, w=54, fp=(0.9, 0.55))
+    spots = beds + [(250, 290), (330, 290), (420, 400), (60, 410)]
+    return r.finish((0, 0), sleep=spots, label='Penginapan - Lantai 2', exit_door=False, spawn=(574, 200))
 
 
 def _church():
@@ -561,7 +589,7 @@ def _smith():
 def _green():
     r = Room(560, 420, 96, 'wood', 15)
     r.put('window_a', 190, 84, h=62, wall=True); r.put('clock', 330, 100, h=60, solid=False, wall=True)
-    r.put('stove', 470, 140, w=104, fp=(0.9, 0.4)); r.put('bed_green', 70, 250, w=76, fp=(0.9, 0.9)); r.put('shelf_a', 232, 134, w=110, fp=(0.95, 0.4))
+    r.put('stove', 470, 140, w=104, fp=(0.9, 0.4)); r.put('bed_green', 70, 250, w=54, fp=(0.96, 0.8)); r.put('shelf_a', 232, 134, w=110, fp=(0.95, 0.4))
     r.put('rug_green', 300, 395, w=120, solid=False, ground=True)
     r.put('table_fl', 330, 316, w=104, fp=(0.85, 0.5)); r.put('chair_a', 262, 326, w=32, fp=(0.8, 0.5)); r.put('chair_a', 400, 326, w=32, fp=(0.8, 0.5), flip=True)
     r.put('potplant', 50, 410, w=44, fp=(0.6, 0.4)); r.put('barrel_c', 515, 390, w=40, fp=(0.8, 0.5)); r.put('lantern_b', 140, 200, w=26, fp=(0.6, 0.3))
@@ -580,7 +608,7 @@ def _guild():
     return r.finish((302, 212))
 
 
-_BUILD = {'inn': _inn, 'church': _church, 'potion': _potion, 'smith': _smith, 'green': _green, 'windmill': _guild}
+_BUILD = {'inn': _inn, 'inn2': _inn2, 'church': _church, 'potion': _potion, 'smith': _smith, 'green': _green, 'windmill': _guild}
 
 
 def build_interior(iid): return _BUILD[iid]()
