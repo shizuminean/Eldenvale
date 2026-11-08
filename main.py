@@ -14,7 +14,7 @@ import pygame
 from data import *
 import village as V
 
-VERSION = '1.5'
+VERSION = '1.5.1'
 BASE = os.path.dirname(os.path.abspath(__file__))
 A = lambda *p: os.path.join(BASE, 'assets', *p)
 ANDROID = 'ANDROID_ARGUMENT' in os.environ or 'ANDROID_PRIVATE' in os.environ
@@ -515,6 +515,7 @@ def load_world():
     pygame.draw.ellipse(SHADOW, (0, 0, 0, 96), SHADOW.get_rect())
     WILD = []   # tidak ada battle mendadak di desa; monster hanya di Hutan Berburu
     DOORR = {k_: pygame.Rect(*v_['trig']) for k_, v_ in DOORS.items()}
+    for _n in NPCS: _n['pos'] = V.NPC_POS.get(_n['name'], _n['pos'])   # posisi NPC sudah divalidasi (tidak di dalam bangunan/tebing)
 
 
 def make_portrait(d, zoom=1.0, dy=0.04):
@@ -760,6 +761,11 @@ def hunt_ok(r):
     return True
 
 
+def safe_spot(x, y):
+    """Titik terdekat dari (x, y) di desa yang tidak terblokir (bangunan, pohon, tebing, air, NPC). Mencegah pemain nyangkut."""
+    return V.free_spot(lambda px, py: blocked(px, py), float(x), float(y), 900, 12)
+
+
 def blocked(x, y, skip=None):
     r = feet(x, y)
     if area == 'town':
@@ -905,6 +911,7 @@ def update_hunt(dt):
 def enter_area(a, pos):
     global area, door_lock
     area = a; P.x, P.y = float(pos[0]), float(pos[1]); door_lock = pygame.time.get_ticks() + 900; reset_touch()
+    if a == 'town' and blocked(P.x, P.y): P.x, P.y = safe_spot(P.x, P.y)
     if a == 'hunt':
         for e in HM: e['imm'] = pygame.time.get_ticks() + 1500
     note("Hutan Berburu: hindari monster yang terlalu kuat!" if a == 'hunt' else "Kembali ke Eldenvale")
@@ -1285,7 +1292,7 @@ def battle_use(iid):
 
 
 def update_battle():
-    global mode, battle
+    global mode, battle, loc, cur, dialog, menu, area
     b = battle
     if b['shake'] > 0: b['shake'] -= 1
     if b['flash'] > 0: b['flash'] -= 1
@@ -1318,7 +1325,10 @@ def update_battle():
     elif s == 'end_lose':
         P.gold //= 2; P.hp, P.mp = P.maxhp // 2, P.maxmp // 2
         for e in HM: e['pos'] = [float(e['home'][0]), float(e['home'][1])]; e['imm'] = pygame.time.get_ticks() + 3000
-        mode = 'explore'; battle = None; enter_area('town', (880, 560)); note("Kamu pingsan & terbangun di alun-alun (emas -50%)")
+        loc = cur = None; dialog = menu = None
+        mode = 'explore'; battle = None; area = 'town'    # area dulu: safe_spot() memakai peta desa, bukan peta hutan
+        P.moving = False; P.step = 0; P.d, P.flip = 'down', False
+        enter_area('town', safe_spot(*V.SPAWN)); note("Kamu pingsan & terbangun di alun-alun (emas -50%)")
 
 
 # ---------------- simpan / muat / game baru ----------------
@@ -1359,7 +1369,7 @@ def loadgame():
         if not isinstance(P.farm, dict): P.farm = {}
         P.farm = {k_: v_ for k_, v_ in P.farm.items() if isinstance(v_, list) and len(v_) == 4 and (v_[1] is None or v_[1] in CROPS)}
         P.hp = clamp(int(P.hp), 1, P.maxhp); P.mp = clamp(int(P.mp), 0, P.maxmp)
-        if area == 'town' and blocked(P.x, P.y): P.x, P.y = float(V.SPAWN[0]), float(V.SPAWN[1])
+        if area == 'town' and blocked(P.x, P.y): P.x, P.y = safe_spot(P.x, P.y)
         if area == 'hunt' and not hunt_ok(feet(P.x, P.y)): P.x, P.y = float(HENTRY[0]), float(HENTRY[1])
         loc = cur = None; reset_touch(); note("Game dimuat.")
         return True
@@ -1670,11 +1680,32 @@ _VG = {}
 
 
 def vignette():
+    """Vinyet digambar sebagai 4 strip tepi (48 px) yang di-cache, bukan satu blit RGBA seluas layar tiap frame."""
     v = _VG.get((W, H))
     if v is None:
-        v = _VG[(W, H)] = pygame.Surface((W, H), pygame.SRCALPHA)
-        for i in range(48): pygame.draw.rect(v, (8, 6, 20, int(0.075 * (48 - i) ** 1.35)), (i, i, W - 2 * i, H - 2 * i), 1)
-    screen.blit(v, (0, 0))
+        full = pygame.Surface((W, H), pygame.SRCALPHA); B = 48
+        for i in range(B): pygame.draw.rect(full, (8, 6, 20, int(0.075 * (B - i) ** 1.35)), (i, i, W - 2 * i, H - 2 * i), 1)
+        v = _VG[(W, H)] = (full.subsurface((0, 0, W, B)).copy(), full.subsurface((0, H - B, W, B)).copy(),
+                           full.subsurface((0, B, B, H - 2 * B)).copy(), full.subsurface((W - B, B, B, H - 2 * B)).copy())
+    t_, b_, l_, r_ = v
+    screen.blit(t_, (0, 0)); screen.blit(b_, (0, H - 48)); screen.blit(l_, (0, 48)); screen.blit(r_, (W - 48, 48))
+
+
+# Penghemat otomatis: bila rata-rata frame di desa terlalu lambat selama beberapa detik, efek diturunkan bertahap
+# (1 = tanpa efek air/kupu-kupu/vinyet/cahaya lampu, 2 = tanpa pencahayaan). Tidak mengubah pengaturan yang tersimpan.
+_PERF = dict(acc=0.0, n=0, bad=0, lite=0)
+
+
+def perf_watch(dt):
+    if mode != 'explore' or loc is not None or area != 'town': _PERF['acc'] = 0.0; _PERF['n'] = 0; return
+    _PERF['acc'] += dt; _PERF['n'] += 1
+    if _PERF['acc'] < 1500: return
+    avg = _PERF['acc'] / _PERF['n']; _PERF['acc'] = 0.0; _PERF['n'] = 0
+    if avg > max(24.0, 1000.0 / max(1, S['fps']) * 1.35): _PERF['bad'] += 1
+    else: _PERF['bad'] = 0
+    if _PERF['bad'] >= 2 and _PERF['lite'] < 2:
+        _PERF['lite'] += 1; _PERF['bad'] = 0
+        note("Grafis dihemat otomatis agar lebih lancar" if _PERF['lite'] == 1 else "Pencahayaan dimatikan agar lebih lancar")
 
 
 def dusk_tint():
@@ -1724,8 +1755,8 @@ def draw_outdoor():
             if n is near: screen.blit(icon_s('down', 20, C_GOLD), (sx - 10, top - 44 + int(3 * math.sin(t / 160.0))))
     amb = V.ambient(P.tm); lv = min(1.0, amb[3] / 150.0)
     if area == 'town':
-        if S['fx']: V.draw_effects(screen, TOWN, cx, cy, ox, oy, W, H, t, lv)
-        V.draw_lighting(screen, TOWN, cx, cy, ox, oy, W, H, amb, P.x - cx + ox, P.y - cy + oy - 30, t, S['fx'])
+        if S['fx'] and _PERF['lite'] < 1: V.draw_effects(screen, TOWN, cx, cy, ox, oy, W, H, t, lv)
+        if _PERF['lite'] < 2: V.draw_lighting(screen, TOWN, cx, cy, ox, oy, W, H, amb, P.x - cx + ox, P.y - cy + oy - 30, t, S['fx'] and _PERF['lite'] < 1)
         if mode == 'explore' and loc is None:
             fk = V.facing_plot(P.x, P.y, P.d, P.flip)
             if fk:
@@ -1733,7 +1764,7 @@ def draw_outdoor():
                 pygame.draw.rect(screen, (pulse, int(pulse * 0.85), 70), fr, 3, border_radius=4)
                 tg = tag(farm_hint(fk), C_GOLD); screen.blit(tg, (fr.centerx - tg.get_width() // 2, fr.y - tg.get_height() - 6))
     else: V.draw_lighting(screen, TOWN, cx, cy, ox, oy, W, H, amb, 0, 0, t, False)
-    if S['fx']: vignette()
+    if S['fx'] and _PERF['lite'] < 1: vignette()
     if debug:
         if area == 'town':
             for b in BLOCK: pygame.draw.rect(screen, (255, 0, 0), b.move(-cx + ox, -cy + oy), 2)
@@ -1835,6 +1866,7 @@ def preset_name():
 
 def srow_do(i):
     key = srows()[i][0]
+    _PERF['lite'] = 0; _PERF['bad'] = 0
     if key == 'preset':
         names = [n for n, _ in PRESETS]; c = preset_name()
         nxt = (names.index(c) + 1) % len(names) if c in names else 0; S.update(PRESETS[nxt][1])
@@ -2094,7 +2126,7 @@ def close_inv():
 def recover():
     global mode, loc, cur, dialog, menu, battle, err_info, area
     err_info = None; dialog = menu = battle = None; loc = cur = None
-    if area == 'town' and blocked(P.x, P.y): P.x, P.y = float(V.SPAWN[0]), float(V.SPAWN[1])
+    if area == 'town' and blocked(P.x, P.y): P.x, P.y = safe_spot(P.x, P.y)
     if area == 'hunt' and not hunt_ok(feet(P.x, P.y)): P.x, P.y = float(HENTRY[0]), float(HENTRY[1])
     reset_touch(); mode = 'explore' if game_started else 'title'
     if mode == 'title': enter_title()
@@ -2385,7 +2417,7 @@ def handle_crash():
 
 def frame():
     dt = clock.tick(S['fps'])
-    handle_events(); update(min(dt, 60)); draw(); pygame.display.flip()
+    perf_watch(dt); handle_events(); update(min(dt, 60)); draw(); pygame.display.flip()
 
 
 def boot():

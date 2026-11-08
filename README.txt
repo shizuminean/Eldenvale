@@ -1,3 +1,23 @@
+PERBAIKAN v1.5.1  (desa rapi, bayangan sesuai bentuk aset, tidak lag, respawn tidak nyangkut)
+  - TATA LETAK DESA: rumah/pohon/semak/batu/bunga tidak lagi ditempel di koordinat acak. village.py kini membaca jenis tanah
+    dari gambar latar + mask (rumput kosong / jalan tanah / batu & tangga / tebing & air) lewat kelas Terrain, lalu
+    mencarikan titik rumput kosong terdekat untuk tiap rumah (fit): tidak menimpa jalan tanah, tangga, tebing, air, atau
+    bangunan lain, dan area depan pintu selalu bisa dilewati. Lampu & bendera yang menabrak bangunan otomatis dilewati.
+    Pohon: 70 -> 34 (jarak 170 px, jauh dari jalan/tebing), semak/batu 70 -> 40, bunga berkelompok bukan taburan acak.
+    Kotak tabrakan rumah kini hanya sebatas badan bawah (bukan 70% tinggi sprite).
+  - BAYANGAN: bukan elips generik lagi. cast_shadow() membuat bayangan dari SILUET sprite itu sendiri (dibalik, dipipihkan,
+    dimiringkan), jadi kincir angin punya bayangan berbilah, pohon berbayangan tajuk, dst. Interior memakai cara yang sama.
+  - LAG: pencahayaan malam/senja tidak lagi memakai overlay alpha layar penuh + puluhan blit RGBA_SUB/RGB_ADD besar tiap
+    frame. Sekarang lightmap setengah resolusi -> diperbesar -> BLEND_RGB_MULT (siang: nol kerja; senja tanpa lampu: 1 fill).
+    Vinyet digambar sebagai 4 strip tepi, bukan satu blit RGBA layar penuh. Ada penghemat otomatis: bila rata-rata frame
+    di desa lambat >3 detik, efek diturunkan bertahap (tanpa efek/lampu, lalu tanpa pencahayaan) tanpa mengubah setelan.
+  - RESPAWN NYANGKUT: setelah kalah, pemain dikirim ke (880, 560) -- koordinat desa lama. Di desa 2x itu titik tersebut
+    ada DI DALAM kotak tabrakan penginapan: pemain tertutup sprite rumah dan semua langkah ditolak. Kini respawn memakai
+    safe_spot() (titik bebas terdekat dari alun-alun), area diset ke desa lebih dulu, interior/dialog/menu dibersihkan.
+    enter_area(), muat save, dan recover() juga memvalidasi posisi. Posisi NPC divalidasi agar tidak di dalam objek.
+  - INTERIOR: furnitur otomatis dijaga tetap di dalam lantai; tumpang tindih (tong/meja di penginapan, lentera/meja di toko
+    ramuan, peti di luar lantai, tanaman di dinding bawah) dirapikan.
+
 ELDENVALE RPG v1.5 (Python + pygame, PC & Android)
 
 YANG BARU DI v1.5  (desa & rumah dibangun ulang, sistem pertanian)

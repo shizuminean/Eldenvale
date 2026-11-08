@@ -1,13 +1,13 @@
 {
-  "date": "2026-11-07",
+  "date": "2026-11-06",
   "quest": {
-    "desc": "Kalahkan 3 Slime Ungu di Hutan Berburu.",
+    "desc": "Kalahkan 3 Goblin Pemanah di Hutan Berburu.",
     "kind": "kill",
-    "match": "Slime Ungu",
+    "match": "Goblin Pemanah",
     "need": 3,
     "xp": 60,
     "gold": 130,
     "item": null,
-    "title": "Buru Slime Ungu"
+    "title": "Buru Goblin Pemanah"
   }
 }
