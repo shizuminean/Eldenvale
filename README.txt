@@ -1,3 +1,21 @@
+PERUBAHAN v1.9.0  (karakter pemain baru + perbaikan tab Setelan)
+  - SEMUA karakter MC lama dihapus (hero berhoodie lama + 4 karakter pilihan Hana/Selene/Kaelen/Ronan). Diganti satu karakter baru
+    dari karakter-elden.zip: "Kael" (pemuda berkaus putih). Sprite: assets/chars/hero_{down,side,up}_0..7.png (8 frame jalan per arah,
+    sisi menghadap kanan; kiri otomatis dicerminkan), hero_idle_*, hero_battle_idle/atk, hero_portrait (4x untuk potret).
+    Sprite dipakai ukuran aslinya (pixel art tajam). Layar PILIH KARAKTER dihapus: Game Baru langsung memulai petualangan.
+    Save lama tetap bisa dimuat (otomatis memakai karakter ini).
+  - TAB SETELAN di tas: area setelan kini persis seukuran kisi inventori (sebelumnya terlalu sempit sehingga kotak inventori mengintip di
+    kanan). Baris setelan dirapikan: aksen emas, label dipotong rapi bila panjang (tidak menimpa tombol nilai), tombol nilai berbingkai,
+    scrollbar di dalam bingkai.
+
+PERBAIKAN v1.8.1  (stabilitas battle + diagnosis crash)
+  - Galat di satu komponen gambar (bar HP, tombol skill, panel, efek) atau satu musuh tidak lagi menjatuhkan seluruh game: galat dicatat,
+    cache gambar dibersihkan, lalu game lanjut. Musuh yang error dikembalikan ke sarangnya.
+  - Galat frame tunggal diserap diam-diam; bila berulang < 3 detik baru muncul layar "Terjadi kesalahan" yang kini menampilkan LOKASI galat
+    (berkas:baris fungsi) supaya mudah dilaporkan.
+  - Log: crash.log juga disalin ke Android/data/org.eldenvale.eldenvale/files/ (bisa dibuka lewat file manager). native_crash.log (faulthandler)
+    mencatat jejak terakhir bila proses mati mendadak.
+
 PERUBAHAN v1.8.0  (layar HP penuh tanpa terpotong + tampilan UI baru)
   - LAYAR PENUH: kanvas game kini mengikuti ukuran jendela ASLI perangkat (bukan perkiraan), jadi pas penuh tanpa bar hitam dan
     tanpa bagian yang terpotong di rasio 18:9, 20:9, 21:9 maupun tablet. Koordinat sentuh dikoreksi bila ada bar.

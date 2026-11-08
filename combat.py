@@ -722,7 +722,7 @@ def player_img(im):
         if base is not None and (C['dash'] or abs((s or C['dash'])['ax']) >= 0.35 or (s or C['dash'])['ay'] > 0):
             k = id(base); pose = _POSE.get(k)
             if pose is None:
-                _POSE.clear(); pose = _POSE[k] = pygame.transform.smoothscale(base, (max(1, base.get_width() // 3), max(1, base.get_height() // 3)))
+                _POSE.clear(); pose = _POSE[k] = base
             ax = (C['dash'] or s)['ax']; res = pygame.transform.flip(pose, True, False) if ax < 0 else pose
     if t < C['flash'] and (int(t / 70) % 2) == 0: res = _tinted(res, (120, 0, 0), 'p')
     if C['dash'] and t < C['inv']:
