@@ -928,7 +928,7 @@ def build_interior(iid):
     # perabot diskalakan sekali; digambar bersama pemain menurut sumbu-Y (pemain bisa berada di belakang perabot)
     objs = [(by, pygame.transform.smoothscale(o, (max(1, int(o.get_width() * s)), max(1, int(o.get_height() * s)))), int(x * s), int(y * s)) for (by, o, x, y) in r['objs']]
     c = dict(id=iid, s=s, surf=surf, ox=(W - surf.get_width()) // 2, oy=(H - surf.get_height()) // 2, floor=r['floor'],
-             solid=r['solid'], exit=r['exit'], spawn=r['spawn'], links=r['links'], label=r['label'], objs=objs,
+             solid=r['solid'], exit=r['exit'], spawn=r['spawn'], links=r['links'], label=r['label'], objs=objs, beds=r['beds'],
              hs=Sheet('hero', scale=HS * k), sh=shs, npcs=npcs, k=k)
     c['sleep'] = []
     if r['sleep']:   # penduduk tidur di kamar penginapan saat malam
@@ -1182,10 +1182,37 @@ def near_npc():
     return best
 
 
+def sleep_in_bed():
+    """Tidur di kasur: layar memudar, HP/MP pulih, waktu melompat ke 06:00 (hari baru bila sudah lewat 06:00)."""
+    snap = screen.copy(); ov = pygame.Surface((W, H)); ov.fill((4, 6, 16)); clk = pygame.time.Clock()
+    for i in range(16):
+        screen.blit(snap, (0, 0)); ov.set_alpha(int(255 * (i + 1) / 16.0)); screen.blit(ov, (0, 0)); pygame.display.flip(); pygame.event.pump(); clk.tick(40)
+    heal_full()
+    if P.tm >= 6 * 60: P.day += 1; on_new_day()
+    P.tm = 6 * 60.0
+    screen.fill((4, 6, 16)); txt("Zzz...", W // 2, H // 2 - 10, F_L, C_TEXT, False, 'c'); pygame.display.flip(); pygame.time.delay(650)
+    for i in range(16):
+        draw_interior(); ov.set_alpha(int(255 * (1 - (i + 1) / 16.0))); screen.blit(ov, (0, 0)); pygame.display.flip(); pygame.event.pump(); clk.tick(40)
+    reset_touch(); note("Kamu terbangun segar. HP & MP pulih penuh. Pagi hari!")
+
+
+def bed_act():
+    if loc is None or not cur.get('beds'): return False
+    fb = ifeet(P.ix, P.iy).inflate(56, 56)
+    if not any(fb.colliderect(b) for b in cur['beds']): return False
+    cost = 10 if cur['id'] == 'inn2' else 0
+    def go():
+        if P.gold < cost: note("Emas tidak cukup."); close_menu(); return
+        P.gold -= cost; close_menu(); sleep_in_bed()
+    open_menu("Tidur di kasur?", [mi("Tidur sampai pagi", go, None, f"{cost} G" if cost else "Gratis", cost)])
+    return True
+
+
 def interact():
     n = near_npc()
     if n: talk(n)
     elif loc is None and area == 'town': farm_act()
+    elif loc is not None: bed_act()
 
 
 # ---------------- battle ----------------
@@ -1695,18 +1722,17 @@ def draw_outdoor():
         elif n and S['names']:
             tg = tag(n['name'], (255, 240, 190)); screen.blit(tg, (sx - tg.get_width() // 2, top - 22))
             if n is near: screen.blit(icon_s('down', 20, C_GOLD), (sx - 10, top - 44 + int(3 * math.sin(t / 160.0))))
-    lv = night_level()
+    amb = V.ambient(P.tm); lv = min(1.0, amb[3] / 150.0)
     if area == 'town':
-        if S['fx']: dusk_tint()
-        if lv > 0.005: night_veil(lv)
         if S['fx']: V.draw_effects(screen, TOWN, cx, cy, ox, oy, W, H, t, lv)
+        V.draw_lighting(screen, TOWN, cx, cy, ox, oy, W, H, amb, P.x - cx + ox, P.y - cy + oy - 30, t, S['fx'])
         if mode == 'explore' and loc is None:
             fk = V.facing_plot(P.x, P.y, P.d, P.flip)
             if fk:
                 fr = V.plot_rect(fk).move(-cx + ox, -cy + oy); pulse = 150 + int(90 * math.sin(t / 180.0))
                 pygame.draw.rect(screen, (pulse, int(pulse * 0.85), 70), fr, 3, border_radius=4)
                 tg = tag(farm_hint(fk), C_GOLD); screen.blit(tg, (fr.centerx - tg.get_width() // 2, fr.y - tg.get_height() - 6))
-    elif lv > 0.005: night_veil(lv)
+    else: V.draw_lighting(screen, TOWN, cx, cy, ox, oy, W, H, amb, 0, 0, t, False)
     if S['fx']: vignette()
     if debug:
         if area == 'town':
@@ -1737,6 +1763,10 @@ def draw_interior():
         if nm and S['names']:
             tg = tag(nm, (255, 240, 190)); screen.blit(tg, (sx - tg.get_width() // 2, sy - im.get_height() - 18))
             if n is near: screen.blit(icon_s('down', 20, C_GOLD), (sx - 10, sy - im.get_height() - 40 + int(3 * math.sin(t / 160.0))))
+    fb = ifeet(P.ix, P.iy).inflate(80, 80)
+    for b_ in c['beds']:   # petunjuk tidur
+        if fb.colliderect(b_):
+            tg = tag("Tidur (Z / A)" + ("  10 G" if c['id'] == 'inn2' else ""), C_GOLD); screen.blit(tg, (c['ox'] + int(b_.centerx * s) - tg.get_width() // 2, c['oy'] + int(b_.top * s) - 26)); break
     for lk in c['links']:   # petunjuk tangga
         r_ = lk['rect']; f_ = ifeet(P.ix, P.iy)
         if f_.inflate(60, 60).colliderect(r_):

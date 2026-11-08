@@ -97,17 +97,17 @@ def tex_water(rng):
 
 
 def tex_soil(rng, kind):
-    """kind 0 = tanah belum dicangkul, 1 = dicangkul (alur), 2 = disiram (gelap)."""
-    base = [(150, 108, 66), (118, 78, 44), (84, 54, 34)][kind]
-    s = pygame.Surface((TS, TS)); s.fill(base)
-    _speckle(s, rng, [_shade(base, 14), _shade(base, -14)], 60)
-    if kind:
-        for yy in (6, 17, 28):
-            pygame.draw.line(s, _shade(base, -26), (1, yy), (TS - 2, yy), 3)
-            pygame.draw.line(s, _shade(base, 20), (1, yy - 2), (TS - 2, yy - 2), 1)
-    else:
-        for _ in range(5): s.set_at((rng.randrange(TS), rng.randrange(TS)), (96, 168, 56))
-    pygame.draw.rect(s, _shade(base, -34), (0, 0, TS, TS), 1)
+    """Lapisan di atas sprite ladang. 0 = (tidak dipakai), 1 = dicangkul (tanah gembur gelap), 2 = disiram (lebih gelap, basah)."""
+    s = pygame.Surface((TS, TS), pygame.SRCALPHA)
+    if kind == 0: return s
+    base = [(0, 0, 0), (86, 54, 30), (38, 28, 24)][kind]; al = [0, 176, 214][kind]
+    pygame.draw.rect(s, base + (al,), (1, 1, TS - 2, TS - 2), border_radius=4)
+    for yy in (7, 18, 29):
+        pygame.draw.line(s, _shade(base, -22) + (min(255, al + 30),), (3, yy), (TS - 4, yy), 3)
+        pygame.draw.line(s, _shade(base, 26) + (150 if kind == 1 else 90,), (3, yy - 2), (TS - 4, yy - 2), 1)
+    if kind == 2:
+        for _ in range(4): s.set_at((rng.randrange(4, TS - 4), rng.randrange(4, TS - 4)), (120, 170, 220, 200))
+    pygame.draw.rect(s, _shade(base, -30) + (200,), (1, 1, TS - 2, TS - 2), 1, border_radius=4)
     return s
 
 
@@ -172,8 +172,12 @@ class Town:
 # (id, sprite, pusat-x, dasar-y, lebar) dalam koordinat dunia
 BUILDINGS = [
     ('church', 'b_church', 1676, 536, 400), ('inn', 'b_inn', 780, 690, 300), ('windmill', 'b_windmill', 1090, 662, 240),
-    ('potion', 'b_potion', 2100, 680, 280), ('green', 'b_green', 2500, 690, 300), ('smith', 'b_smith', 660, 1470, 280),
+    ('potion', 'b_potion', 2100, 680, 280), ('green', 'b_green', 2500, 690, 300), ('smith', 'b_red', 660, 1470, 280),
 ]
+# rumah hiasan (tanpa interior): (sprite, pusat-x, dasar-y, lebar)
+DECOR_HOUSES = [('b_japan', 800, 180, 170), ('b_barn', 844, 1058, 180)]
+FLAGS = [(1446, 552, 'flag_a'), (1906, 552, 'flag_b'), (1150, 746, 'flag_c'), (1150, 940, 'flag_c'), (2190, 746, 'flag_d'), (2190, 940, 'flag_d'),
+         (2962, 746, 'flag_b'), (3236, 746, 'flag_a')]
 FARM = dict(c0=49, r0=29, cols=11, rows=5)
 FARM_RECT = pygame.Rect(FARM['c0'] * TS, FARM['r0'] * TS, FARM['cols'] * TS, FARM['rows'] * TS)
 
@@ -202,9 +206,8 @@ def build_town():
     soil = [tex_soil(tex, 0), tex_soil(tex, 1), tex_soil(tex, 2)]
 
     # --- ladang: petak tanah kosong + pagar
-    for rr in range(FARM['rows']):
-        for cc in range(FARM['cols']): ground.blit(soil[0], ((FARM['c0'] + cc) * TS, (FARM['r0'] + rr) * TS))
-    pygame.draw.rect(ground, (84, 54, 34), FARM_RECT.inflate(6, 6), 3)
+    fld = spr('field_big', w=FARM_RECT.w + 30, h=FARM_RECT.h + 33)   # sprite ladang dari aset gambar
+    ground.blit(fld, (FARM_RECT.x - 15, FARM_RECT.y - 18))
 
     objs, block, glows, lamp_pts = [], [], [], []
     occ = []                                  # kotak terlarang untuk dekorasi acak
@@ -222,20 +225,29 @@ def build_town():
         doors[bid] = dict(trig=(cx - 22, by - 6, 44, 18), out=(cx, by + 42))
         occ.append(pygame.Rect(cx - iw // 2 - 50, by - ih, iw + 100, ih + 110))
         glows += [(cx - int(iw * 0.2), by - int(ih * 0.30), 46, (255, 190, 90)), (cx + int(iw * 0.2), by - int(ih * 0.30), 46, (255, 190, 90))]
+    for sp, cx, by, w in DECOR_HOUSES:
+        im = spr(sp, w=w); iw, ih = im.get_size(); add(im, cx, by, int(w * 0.95))
+        block.append(pygame.Rect(cx - int(iw * 0.46), by - ih + int(ih * 0.30), int(iw * 0.92), int(ih * 0.70) - 4))
+        occ.append(pygame.Rect(cx - iw // 2 - 50, by - ih, iw + 100, ih + 110))
+        glows += [(cx - int(iw * 0.2), by - int(ih * 0.35), 40, (255, 190, 90)), (cx + int(iw * 0.2), by - int(ih * 0.35), 40, (255, 190, 90))]
     inn_h = int(217 * 300 / 288.0)
     smoke = [(780 - 150 + int(0.31 * 300), 690 - inn_h + 12)]
 
     # plaza: lampu di keempat pedestal sudut, bangku, papan misi, sumur
     for (px, py) in [(1222, 722), (2120, 722), (1222, 1044), (2120, 1044)]:
-        im = spr('lampA', w=40); add(im, px, py, 30); lamp_pts.append((px, py - 84)); glows.append((px, py - 84, 120, (255, 200, 110)))
+        im = spr('lamp_b', h=132); add(im, px, py, 30); lamp_pts.append((px, py - 112)); glows.append((px, py - 112, 120, (255, 200, 110)))
         block.append(pygame.Rect(px - 8, py - 10, 16, 10)); occ.append(pygame.Rect(px - 40, py - 110, 80, 130))
     for (px, py) in [(1480, 1030), (1900, 1030)]:
         im = spr('bench_b', w=92); add(im, px, py, 70); block.append(pygame.Rect(px - 40, py - 20, 80, 18)); occ.append(pygame.Rect(px - 60, py - 60, 120, 100))
     add(spr('board', w=96), 1500, 702, 70); block.append(pygame.Rect(1500 - 36, 702 - 28, 72, 24)); occ.append(pygame.Rect(1440, 600, 120, 130))
-    add(spr('well', w=120), 940, 1090, 100); block.append(pygame.Rect(940 - 38, 1090 - 40, 76, 36)); occ.append(pygame.Rect(870, 960, 140, 150))
+    add(spr('well', w=120), 1070, 1110, 100); block.append(pygame.Rect(1070 - 38, 1110 - 40, 76, 36)); occ.append(pygame.Rect(1000, 980, 140, 150))
     for (px, py) in [(500, 742), (1020, 742), (2300, 742), (2900, 742), (360, 934), (1000, 934)]:   # lampu jalan di tepi jalan utama
-        im = spr('lampC', w=26); add(im, px, py, 20); lamp_pts.append((px, py - 96)); glows.append((px, py - 96, 90, (255, 200, 110)))
+        im = spr('lamp_a', h=112); add(im, px, py, 20); lamp_pts.append((px, py - 96)); glows.append((px, py - 96, 90, (255, 200, 110)))
         block.append(pygame.Rect(px - 6, py - 8, 12, 8)); occ.append(pygame.Rect(px - 30, py - 110, 60, 130))
+
+    # bendera tiang (hiasan berbayang, pangkal tiang menghalangi sedikit)
+    for (px, py, nm) in FLAGS:
+        im = spr(nm, h=148); add(im, px, py, 20); block.append(pygame.Rect(px - 6, py - 8, 12, 8)); occ.append(pygame.Rect(px - 40, py - 150, 80, 170))
 
     # gerbang selatan (ujung jalan)
     gi = spr('gate_arch', w=270); add(gi, 1676, MH - 6, 0)
@@ -255,7 +267,7 @@ def build_town():
         for yy in range(y0, y1, TS): pygame.draw.rect(ground, (120, 76, 34), (xx - 3, yy, 14, 12), border_radius=3); pygame.draw.rect(ground, (176, 124, 64), (xx - 2, yy + 1, 12, 4))
         block.append(pygame.Rect(xx, y0, 8, y1 - y0))
     for yy in (gy0, gy1):
-        add(spr('lampD', w=22), fx0 + 2, yy + 6, 14); lamp_pts.append((fx0 + 2, yy - 92)); glows.append((fx0 + 2, yy - 92, 70, (255, 200, 110)))
+        add(spr('lamp_a', h=100), fx0 + 2, yy + 6, 14); lamp_pts.append((fx0 + 2, yy - 82)); glows.append((fx0 + 2, yy - 82, 70, (255, 200, 110)))
     add(spr('stall', w=170), 2260, 1070, 150); block.append(pygame.Rect(2260 - 72, 1070 - 70, 144, 66))
     add(spr('crate', w=40), fx1 + 30, fy0 + 40, 30); add(spr('barrel_c', w=34), fx1 + 34, fy1 + 10, 26)
     occ += [pygame.Rect(fx0 - 80, fy0 - 80, fx1 - fx0 + 220, fy1 - fy0 + 160), pygame.Rect(2160, 960, 220, 160)]
@@ -292,6 +304,11 @@ def build_town():
         if rng.random() < 0.16 and ok(x, y, 1):
             im = spr(rng.choice(['fl0', 'fl1', 'fl2', 'fl4', 'fl5', 'fl6', 'fl7', 'fl8', 'fl9', 'fl10', 'fl11']), h=rng.randrange(20, 30))
             ground.blit(im, (x - im.get_width() // 2, y - im.get_height()))
+    gr = [('grass_a', (20, 28)), ('grass_b', (30, 40)), ('grass_c', (38, 50))]
+    for (x, y) in cells:   # rumput liar 3 jenis (hiasan datar)
+        if rng.random() < 0.55 and ok(x, y, 1):
+            nm, (h0, h1) = gr[rng.randrange(3)]
+            im = spr(nm, h=rng.randrange(h0, h1)); ground.blit(im, (x + rng.randrange(-5, 5) - im.get_width() // 2, y - im.get_height()))
     for (px, py, nm) in [(700, 702, 'bed0'), (900, 702, 'bed1'), (2000, 692, 'bed2'), (2220, 692, 'bed3'), (2400, 702, 'bed1'), (2610, 702, 'bed0'),
                          (560, 1482, 'bed4'), (770, 1482, 'bed0'), (1190, 706, 'bed2')]:
         im = spr(nm, w=60); add(im, px, py, 46); block.append(pygame.Rect(px - 22, py - 14, 44, 12))
@@ -360,31 +377,81 @@ def draw_effects(screen, town, cx, cy, ox, oy, W, H, t, night):
                     a = int(255 * math.sin(ph / 0.35 * math.pi))
                     pygame.draw.rect(screen, (150 + a // 4, 214 + a // 8, 252), (x - cx + ox + (i * 7) % 26, y - cy + oy + (i * 13) % 30, 8, 2))
     for k, (x, y) in enumerate(town.smoke):
-        if x - cx + ox < -60 or x - cx + ox > W + 60 or y - cy + oy < -120 or y - cy + oy > H + 60: continue
+        sx0, sy0 = x - cx + ox, y - cy + oy
+        if sx0 < -60 or sx0 > W + 60 or sy0 < -120 or sy0 > H + 60: continue
         for j in range(4):
             ph = ((t / 2600.0) + j / 4.0 + k * 0.3) % 1.0
-            sx = x - cx + ox + math.sin(ph * 5 + j) * 8 + ph * 18; sy = y - cy + oy - ph * 70
-            r = int(5 + ph * 11); g = int(236 - ph * 40)
-            blob(screen, int(sx), int(sy), r, (g, g, g + 6), int(150 * (1 - ph)))
+            q = int(ph * 8)                                   # 8 tahap -> hanya 8 surface di-cache
+            blob(screen, int(sx0 + math.sin(ph * 5 + j) * 8 + ph * 18), int(sy0 - ph * 70), 5 + q * 2, (236 - q * 5, 236 - q * 5, 242 - q * 5), 150 - q * 18)
     if night < 0.15:
-        for i, (fx, fy, ph0) in enumerate(town.fauna):
+        for i, (fx, fy, ph0) in enumerate(town.fauna[:6]):
             x = fx + math.sin(t / 1900.0 + ph0) * 60 + math.sin(t / 700.0 + i) * 8; y = fy + math.cos(t / 2300.0 + ph0 * 2) * 40
             sx, sy = int(x - cx + ox), int(y - cy + oy)
             if -20 < sx < W + 20 and -20 < sy < H + 20:
                 fl = int(3 * abs(math.sin(t / 110.0 + i * 1.7))); col = [(255, 236, 120), (255, 160, 200), (170, 210, 255)][i % 3]
                 pygame.draw.rect(screen, col, (sx - 1 - fl, sy - 2, 2 + fl, 3)); pygame.draw.rect(screen, col, (sx + 1, sy - 2, 2 + fl, 3)); pygame.draw.rect(screen, (60, 40, 30), (sx, sy - 1, 1, 3))
     elif night > 0.25:
-        for i, (fx, fy, ph0) in enumerate(town.fauna):
+        for i, (fx, fy, ph0) in enumerate(town.fauna[:6]):
             x = fx + math.sin(t / 2100.0 + ph0) * 70; y = fy + math.cos(t / 1700.0 + ph0) * 50
             sx, sy = int(x - cx + ox), int(y - cy + oy)
             if -20 < sx < W + 20 and -20 < sy < H + 20:
-                a = 0.5 + 0.5 * math.sin(t / 500.0 + i * 2.1)
-                blob(screen, sx, sy, 7, (200, 255, 120), int(60 * a)); pygame.draw.rect(screen, (230, 255, 160), (sx, sy, 2, 2))
-    if night > 0.03:
+                a_ = int(2.99 * (0.5 + 0.5 * math.sin(t / 500.0 + i * 2.1)))   # 3 tingkat kilau
+                blob(screen, sx, sy, 7, (200, 255, 120), 30 + a_ * 22); pygame.draw.rect(screen, (230, 255, 160), (sx, sy, 2, 2))
+
+
+# ------------------------------------------------------------------ nuansa pagi / sore / malam
+# (menit, (r, g, b, alpha)): warna selimut cahaya sepanjang hari. Alpha 0 = terang penuh.
+AMB = [(0, (14, 22, 72, 150)), (300, (20, 30, 84, 142)), (360, (255, 150, 120, 54)), (420, (255, 196, 150, 18)), (480, (255, 210, 160, 0)),
+       (990, (255, 210, 130, 0)), (1050, (255, 178, 84, 40)), (1110, (255, 118, 66, 70)), (1170, (110, 60, 120, 100)), (1230, (30, 34, 92, 136)),
+       (1290, (14, 22, 72, 150)), (1440, (14, 22, 72, 150))]
+
+
+def ambient(tm):
+    for (m0, c0), (m1, c1) in zip(AMB, AMB[1:]):
+        if m0 <= tm < m1:
+            f = (tm - m0) / float(m1 - m0)
+            return tuple(int(c0[i] + (c1[i] - c0[i]) * f) for i in range(4))
+    return AMB[-1][1]
+
+
+_OV, _HOLE, _WARM = {}, {}, {}
+
+
+def hole(r):
+    s = _HOLE.get(r)
+    if s is None:
+        s = _HOLE[r] = pygame.Surface((r * 2, r * 2), pygame.SRCALPHA)
+        for i in range(r, 0, -2): pygame.draw.circle(s, (0, 0, 0, int(215 * (1.0 - i / float(r)) ** 1.25)), (r, r), i)
+    return s
+
+
+def warm(r, col, kq):
+    k = (r, col, kq); s = _WARM.get(k)
+    if s is None:
+        s = _WARM[k] = pygame.Surface((r * 2, r * 2))
+        for i in range(r, 0, -3):
+            f = (1.0 - i / float(r)) ** 1.8 * 0.30 * kq / 4.0
+            pygame.draw.circle(s, (int(col[0] * f), int(col[1] * f), int(col[2] * f)), (r, r), i)
+    return s
+
+
+def draw_lighting(screen, town, cx, cy, ox, oy, W, H, amb, px, py, t, lights=True):
+    """Selimut warna hari (pagi/sore/malam); saat gelap lampu & jendela 'melubangi' kegelapan + cahaya hangat aditif."""
+    a = amb[3]
+    if a <= 2: return
+    ov = _OV.get((W, H))
+    if ov is None: ov = _OV[(W, H)] = pygame.Surface((W, H), pygame.SRCALPHA)
+    ov.fill(amb)
+    lit = []
+    if lights and a >= 44:
+        kq = max(1, min(4, int((a - 44) / 22.0) + 1))
         for (x, y, r, col) in town.glows:
-            sx, sy = x - cx + ox, y - cy + oy
-            if sx < -r or sx > W + r or sy < -r or sy > H + r: continue
-            screen.blit(glow_surf(r, col), (sx - r, sy - r))
+            sx, sy = int(x - cx + ox), int(y - cy + oy); rr = int(r * 1.3)
+            if sx < -rr or sx > W + rr or sy < -rr or sy > H + rr: continue
+            ov.blit(hole(rr), (sx - rr, sy - rr), special_flags=pygame.BLEND_RGBA_SUB); lit.append((sx, sy, r, col, kq))
+        ov.blit(hole(150), (int(px) - 150, int(py) - 150), special_flags=pygame.BLEND_RGBA_SUB)   # cahaya di sekitar pemain
+    screen.blit(ov, (0, 0))
+    for (sx, sy, r, col, kq) in lit: screen.blit(warm(r, col, kq), (sx - r, sy - r), special_flags=pygame.BLEND_RGB_ADD)
 
 
 # ------------------------------------------------------------------ ladang (logika)
@@ -433,7 +500,7 @@ def plot_rect(key):
 class Room:
     def __init__(s, W, H, wh=96, floor='wood', seed=1):
         s.W, s.H, s.wh, s.rng = W, H, wh, random.Random(seed)
-        s.surf = pygame.Surface((W, H)); s.solid = []; s.items = []; s.ground = []; s.wallitems = []; s.links = []
+        s.surf = pygame.Surface((W, H)); s.solid = []; s.items = []; s.ground = []; s.wallitems = []; s.links = []; s.beds = []
         s.floor = floor
         s._floor(); s._walls()
 
@@ -488,9 +555,10 @@ class Room:
         pygame.draw.rect(s.surf, (176, 172, 160), (cx - 46, H - 18, 92, 18)); pygame.draw.rect(s.surf, (120, 40, 36), (cx - 38, H - 18, 76, 14), border_radius=2)
         pygame.draw.rect(s.surf, (214, 170, 70), (cx - 38, H - 18, 76, 14), 2, border_radius=2)
 
-    def put(s, name, cx, by, w=None, h=None, fp=(0.94, 0.55), solid=True, ground=False, wall=False, flip=False):
+    def put(s, name, cx, by, w=None, h=None, fp=(0.94, 0.55), solid=True, ground=False, wall=False, flip=False, bed=False):
         im = spr(name, w=w, h=h, flip=flip); iw, ih = im.get_size()
         (s.ground if ground else s.wallitems if wall else s.items).append((by, im, cx - iw // 2, by - ih))
+        if bed: s.beds.append(pygame.Rect(cx - iw // 2, by - ih, iw, ih))
         if solid and not ground and not wall:
             fw, fh = int(iw * fp[0]), int(ih * fp[1]); s.solid.append(pygame.Rect(cx - fw // 2, by - fh, fw, fh))
         return im
@@ -512,7 +580,7 @@ class Room:
         floor = [pygame.Rect(18, wh, W - 36, H - wh - 18), pygame.Rect(cx - 44, H - 40, 88, 40)]
         return dict(surf=s.surf, objs=sorted(s.items, key=lambda o: o[0]), floor=floor, solid=s.solid,
                     exit=pygame.Rect(cx - 38, H - 14, 76, 12) if exit_door else pygame.Rect(-500, -500, 1, 1),
-                    spawn=spawn or (cx, H - 62), npc_pos=npc_pos, sleep=list(sleep), links=s.links, label=label)
+                    spawn=spawn or (cx, H - 62), npc_pos=npc_pos, sleep=list(sleep), links=s.links, label=label, beds=s.beds)
 
 
 def _stairs(r, cx, by, to, spawn, label):
@@ -546,7 +614,7 @@ def _inn2():
     beds = []
     for row, by in enumerate((206, 352)):
         for i, x in enumerate((84, 224, 364)):
-            r.put('bed_blue' if (i + row) % 2 == 0 else 'bed_green', x, by, w=50, fp=(0.96, 0.8)); beds.append((x, by - 38))
+            r.put('bed_blue' if (i + row) % 2 == 0 else 'bed_green', x, by, w=50, fp=(0.96, 0.8), bed=True); beds.append((x, by - 38))
             r.put('shelf_s', x + 44, by - 2, w=26, fp=(0.9, 0.5))
     r.put('cupboard', 574, 330, w=62, fp=(0.94, 0.55)); r.put('potplant', 592, 410, w=34, fp=(0.7, 0.5)); r.put('lantern_a', 470, 300, w=26, fp=(0.6, 0.5))
     r.put('chest', 520, 400, w=54, fp=(0.9, 0.55))
@@ -589,7 +657,7 @@ def _smith():
 def _green():
     r = Room(560, 420, 96, 'wood', 15)
     r.put('window_a', 190, 84, h=62, wall=True); r.put('clock', 330, 100, h=60, solid=False, wall=True)
-    r.put('stove', 470, 140, w=104, fp=(0.9, 0.4)); r.put('bed_green', 70, 250, w=54, fp=(0.96, 0.8)); r.put('shelf_a', 232, 134, w=110, fp=(0.95, 0.4))
+    r.put('stove', 470, 140, w=104, fp=(0.9, 0.4)); r.put('bed_green', 70, 250, w=54, fp=(0.96, 0.8), bed=True); r.put('shelf_a', 232, 134, w=110, fp=(0.95, 0.4))
     r.put('rug_green', 300, 395, w=120, solid=False, ground=True)
     r.put('table_fl', 330, 316, w=104, fp=(0.85, 0.5)); r.put('chair_a', 262, 326, w=32, fp=(0.8, 0.5)); r.put('chair_a', 400, 326, w=32, fp=(0.8, 0.5), flip=True)
     r.put('potplant', 50, 410, w=44, fp=(0.6, 0.4)); r.put('barrel_c', 515, 390, w=40, fp=(0.8, 0.5)); r.put('lantern_b', 140, 200, w=26, fp=(0.6, 0.3))

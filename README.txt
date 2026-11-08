@@ -20,6 +20,26 @@ YANG BARU DI v1.5  (desa & rumah dibangun ulang, sistem pertanian)
     Tidur di penginapan (kini bisa juga siang hari) melompat ke pagi dan menumbuhkan tanaman.
     Data ladang ikut tersimpan di save.
 
+LAMPU, BENDERA, MALAM, TIDUR
+  - Semua lampu jalan diganti sprite lampu baru (di posisi yang sama): lampu hitam ornamen di tepi jalan & ladang,
+    lampu berspanduk merah di keempat sudut plaza. Ditambah 8 bendera tiang (sisi gereja, mulut plaza, jembatan).
+  - Nuansa hari baru (village.py: AMB/ambient): fajar merah muda, siang terang, sore keemasan -> jingga -> ungu,
+    malam biru. Saat gelap, lampu & jendela 'melubangi' kegelapan dengan cahaya hangat, dan pemain membawa cahaya kecil.
+    (Dengan Efek visual mati, hanya selimut warna sederhana.)
+  - Patah-patah: asap & kunang-kunang sebelumnya membuat ribuan Surface baru tiap frame; kini dikuantisasi (maks 8-39 di cache).
+  - TIDUR DI KASUR: dekati kasur di dalam rumah (Rumah Nenek Wren = gratis, kamar lantai 2 penginapan = 10 G),
+    tekan Z / tombol A, pilih "Tidur sampai pagi": layar memudar, HP/MP pulih, waktu ke 06:00 dan tanaman tumbuh.
+
+RUMAH BARU
+  - Rumah Pandai Besi kini memakai sprite rumah atap merah (isi & fungsi tetap).
+  - Ditambah 2 rumah hiasan (tanpa interior): rumah bergaya Jepang di teras barat laut atas dan lumbung merah
+    di teras barat daya dekat sumur.
+
+LADANG & RUMPUT
+  - Ladang memakai sprite ladang dari aset gambar (assets/spr/field_big.png). Status cangkul/siram digambar
+    sebagai lapisan tanah gelap semi-transparan di atasnya.
+  - Rumput liar 3 jenis (kecil, sedang, tinggi) tersebar di desa.
+
 PERBAIKAN (lag & interior)
   - Lag: tabrakan desa kini memakai hash spasial (bukan 177 kotak tiap cek), kilau air per-bucket, NPC jauh
     tidak diperbarui. Efek visual bisa dimatikan: Setelan > "Efek visual" (preset Sedang/Rendah mematikannya).
