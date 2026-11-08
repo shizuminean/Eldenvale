@@ -731,9 +731,13 @@ def player_img(im):
 
 
 def _bar(x, y, w, h, v, m, col):
-    pygame.draw.rect(g.screen, (14, 18, 34), (int(x - 1), int(y - 1), int(w + 2), int(h + 2)), border_radius=3)
-    k = max(0.0, min(1.0, v / float(max(1, m))))
-    if k > 0: pygame.draw.rect(g.screen, col, (int(x), int(y), max(1, int(w * k)), int(h)), border_radius=3)
+    x, y, w, h = int(x), int(y), int(w), max(2, int(h)); rad = max(1, h // 2)
+    pygame.draw.rect(g.screen, (4, 6, 16), (x - 2, y - 2, w + 4, h + 4), border_radius=rad + 2)
+    pygame.draw.rect(g.screen, (30, 36, 62), (x - 1, y - 1, w + 2, h + 2), border_radius=rad + 1)
+    k = max(0.0, min(1.0, v / float(max(1, m)))); fw = int(w * k)
+    if fw > 0:
+        g.screen.blit(g.vgrad(fw, h, g.mix(col, (255, 255, 255), 0.35), g.mix(col, (0, 0, 0), 0.25), rad), (x, y))
+        if h >= 5: g.screen.blit(g.gloss(fw, h, rad, 90), (x, y))
 
 
 def draw_over(cx, cy, ox, oy):
@@ -784,8 +788,9 @@ def draw_boss_bar():
         if e['alive'] and e['boss'] and e.get('chase'): b = e; break
     if not b: return
     w = min(460, g.W - 2 * g.SAFE_X - 440); w = max(w, 220); x = (g.W - w) // 2; y = g.SAFE_Y + 70
-    g.txt(b['m']['name'], g.W // 2, y, g.F_SB, g.C_TEXT, True, 'c')
-    _bar(x, y + 30, w, 12, b['hp'], b['maxhp'], g.C_RED)
+    g.panel(pygame.Rect(x - 22, y - 8, w + 44, 62), 220, 14, True)
+    g.txt(b['m']['name'], g.W // 2, y - 2, g.F_SB, g.C_TEXT, True, 'c')
+    _bar(x, y + 28, w, 14, b['hp'], b['maxhp'], g.C_RED)
 
 
 # ------------------------------------------------------------------ tombol
@@ -795,8 +800,7 @@ _BC = {}
 def _btn_bg(r, col):
     k = (r, col); s = _BC.get(k)
     if s is None:
-        s = pygame.Surface((2 * r + 8, 2 * r + 8), pygame.SRCALPHA); c = (r + 4, r + 4)
-        pygame.draw.circle(s, (12, 18, 38, 215), c, r); pygame.draw.circle(s, col + (235,), c, r, 4); _BC[k] = s
+        s = _BC[k] = g.disc(r, (30, 40, 78), (10, 14, 32), col, 236, 64)
     return s
 
 

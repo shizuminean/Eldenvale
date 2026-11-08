@@ -1,3 +1,16 @@
+PERUBAHAN v1.8.0  (layar HP penuh tanpa terpotong + tampilan UI baru)
+  - LAYAR PENUH: kanvas game kini mengikuti ukuran jendela ASLI perangkat (bukan perkiraan), jadi pas penuh tanpa bar hitam dan
+    tanpa bagian yang terpotong di rasio 18:9, 20:9, 21:9 maupun tablet. Koordinat sentuh dikoreksi bila ada bar.
+    AREA AMAN: HUD, joystick, tombol skill, dialog, dan menu menjauh dari notch / lubang kamera / sudut layar bulat.
+    Notch dibaca otomatis lewat pyjnius (ditambahkan ke buildozer.spec); jendela dipaksa memakai area notch (Android 9+).
+    Bila masih ada yang tertutup: Tas > Setelan > "Margin layar" (Otomatis / Tanpa / Kecil / Sedang / Besar).
+  - TAMPILAN BARU: panel kaca bergradien dengan bayangan + bingkai ganda dan siku emas, tombol berkilau, bar HP/MP/XP berkilau,
+    logo ELDENVALE bergradien emas dengan pendar, kunang-kunang melayang di judul & pilih karakter, joystick dan tombol serang/skill
+    berbentuk cakram kaca, bar HP musuh/boss bergaya baru. HUD menampilkan nama + gelar karakter terpilih, lencana level emas,
+    ikon matahari/bulan pada jam. Dialog menampilkan potret bulat NPC, tab nama berkilau, dan penanda halaman.
+  - Label nama musuh di Hutan hanya muncul untuk musuh yang dekat / sedang mengejar / boss (tidak lagi penuh teks).
+  - Nama karakter di HUD & tas sekarang sesuai pilihan (sebelumnya selalu "Kael").
+
 PERUBAHAN v1.7.0  (BATTLE REAL-TIME ala MOBA, tanpa popup / layar battle)
   - Layar battle giliran lama DIHAPUS. Monster tidak lagi membuka popup: semua pertarungan terjadi langsung di peta Hutan Berburu,
     secara real-time. Logika baru ada di combat.py (main.py hanya memanggilnya).

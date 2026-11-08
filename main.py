@@ -15,7 +15,7 @@ from data import *
 import village as V
 import combat
 
-VERSION = '1.7.0'
+VERSION = '1.8.0'
 BASE = os.path.dirname(os.path.abspath(__file__))
 A = lambda *p: os.path.join(BASE, 'assets', *p)
 ANDROID = 'ANDROID_ARGUMENT' in os.environ or 'ANDROID_PRIVATE' in os.environ
@@ -50,7 +50,7 @@ def log_exc(where=''):
 
 # ---------------- setelan ----------------
 S = {'fx': True, 'fps': 60, 'show_fps': False, 'shadows': True, 'names': True, 'wander': True, 'shake': True,
-     'touch': 'auto', 'tsize': 1, 'talpha': 1, 'speed': 1}
+     'touch': 'auto', 'tsize': 1, 'talpha': 1, 'speed': 1, 'margin': 'auto'}
 S0 = dict(S)
 
 
@@ -76,21 +76,107 @@ screen = None
 clock = None
 
 
+PHYS = [0, 0]            # ukuran jendela asli (piksel fisik)
+INSETS = [0, 0, 0, 0]    # area tak aman (notch / sudut bulat / bar sistem): kiri, atas, kanan, bawah, dalam piksel LOGIS
+MARGIN_PX = (0, 18, 40, 64)
+_INS = dict(t=0, ok=False, tries=0)
+
+
+def native_ratio():
+    """Rasio jendela layar SEBENARNYA (bukan perkiraan dari get_desktop_sizes): kanvas pas penuh, tanpa bar hitam, tanpa terpotong."""
+    try:
+        sf = pygame.display.set_mode((0, 0), pygame.FULLSCREEN); w, h = sf.get_size()
+        try: w, h = pygame.display.get_window_size()
+        except Exception: pass
+        if w > 0 and h > 0:
+            PHYS[0], PHYS[1] = max(w, h), min(w, h); return max(w, h) / float(min(w, h))
+    except Exception: log_exc('native_ratio')
+    try: dw, dh = pygame.display.get_desktop_sizes()[0]
+    except Exception: dw, dh = 16, 9
+    PHYS[0], PHYS[1] = max(dw, dh), min(dw, dh)
+    return max(dw, dh) / float(max(1, min(dw, dh)))
+
+
 def pick_size():
-    """Kanvas logika: tinggi tetap, lebar mengikuti rasio layar HP supaya tidak ada yang terpotong."""
+    """Kanvas logika: tinggi dasar 540, lebar mengikuti rasio layar HP persis (tidak ada yang terpotong, tidak ada bar hitam)."""
     env = os.environ.get('ELDEN_SIZE')
     if env:
         try:
             a, b = env.lower().split('x'); return int(a), int(b)
         except Exception: pass
     if not ANDROID: return 1280, 720
-    try: dw, dh = pygame.display.get_desktop_sizes()[0]
-    except Exception: dw, dh = 16, 9
-    ratio = max(dw, dh) / float(max(1, min(dw, dh)))
-    h = 540
+    ratio = native_ratio(); h = 540
     w = int(round(h * ratio / 2.0)) * 2
     if w < 960: w = 960; h = min(780, int(round(960 / ratio / 2.0)) * 2)   # layar lebih 'kotak' (tablet): tambah tinggi, bukan potong
-    return min(1260, w), h
+    return min(1600, w), h
+
+
+def android_setup_window():
+    """Android 9+: jendela dipaksa memakai seluruh layar termasuk area notch (butuh pyjnius; aman bila tidak ada)."""
+    try:
+        from jnius import autoclass
+        from android.runnable import run_on_ui_thread
+        act = autoclass('org.kivy.android.PythonActivity').mActivity; ver = autoclass('android.os.Build$VERSION').SDK_INT
+
+        @run_on_ui_thread
+        def _ext():
+            try:
+                w = act.getWindow(); lp = w.getAttributes(); lp.layoutInDisplayCutoutMode = 3 if ver >= 30 else 1; w.setAttributes(lp)
+            except Exception: pass
+        if ver >= 28: _ext()
+    except Exception: pass
+
+
+def android_insets_px():
+    try:
+        from jnius import autoclass
+        act = autoclass('org.kivy.android.PythonActivity').mActivity
+        wi = act.getWindow().getDecorView().getRootWindowInsets()
+        if wi is None: return None
+        l = t = r = b = 0
+        try:
+            dc = wi.getDisplayCutout()
+            if dc is not None: l, t, r, b = dc.getSafeInsetLeft(), dc.getSafeInsetTop(), dc.getSafeInsetRight(), dc.getSafeInsetBottom()
+        except Exception: pass
+        return l, t, r, b
+    except Exception: return None
+
+
+def poll_insets(force=False):
+    """Baca notch beberapa kali di awal (nilainya baru tersedia setelah jendela tampil). True bila berubah."""
+    if not ANDROID or _INS['ok'] or _INS['tries'] > 14: return False
+    now = pygame.time.get_ticks()
+    if not force and now - _INS['t'] < 500: return False
+    _INS['t'] = now; _INS['tries'] += 1; v = android_insets_px()
+    if v is None: return False
+    _INS['ok'] = True; sc = W / float(max(1, PHYS[0] or W)); new = [int(round(x * sc)) for x in v]
+    if new != INSETS: INSETS[:] = new; return True
+    return False
+
+
+def apply_safe():
+    """SAFE_X / SAFE_Y = jarak aman konten dari tepi layar: notch otomatis atau margin manual (Setelan)."""
+    global SAFE_X, SAFE_Y
+    bx, by = (36, 16) if ANDROID else (26, 14); m = S.get('margin', 'auto')
+    if ANDROID and m == 'auto' and not _INS['ok']: bx, by = 48, 20      # notch belum terdeteksi: pakai margin aman bawaan
+    if m == 'auto': SAFE_X = max(bx, max(INSETS[0], INSETS[2]) + 14); SAFE_Y = max(by, max(INSETS[1], INSETS[3]) + 8)
+    else:
+        m = int(m) if m in (0, 1, 2, 3) else 0; SAFE_X = bx + MARGIN_PX[m]; SAFE_Y = by + MARGIN_PX[m] // 2
+
+
+def relayout():
+    """Susun ulang HUD, kontrol sentuh, dan tombol tutup setelah area aman berubah."""
+    global CLOSE
+    apply_safe(); build_hud(); build_touch(); CLOSE = pygame.Rect(W - 70 + 8, SAFE_Y + 6, 54, 54)
+
+
+def touch_xy(e):
+    """Koordinat jari (0..1 terhadap jendela) -> koordinat kanvas, memperhitungkan bar hitam bila rasio tidak persis sama."""
+    wr = (PHYS[0] / float(max(1, PHYS[1]))) if PHYS[0] else (W / float(H)); lr = W / float(H); x, y = e.x, e.y
+    if abs(wr - lr) > 0.01:
+        if wr > lr: vw = lr / wr; x = (x - (1 - vw) / 2) / vw
+        else: vh = wr / lr; y = (y - (1 - vh) / 2) / vh
+    return x * W, y * H
 
 
 def make_screen():
@@ -218,18 +304,109 @@ def shape(r, fill=None, rad=8, border=None, bw=2):
     screen.blit(s, r.topleft)
 
 
+def gloss(w, h, rad, a=64):
+    """Kilau kaca di separuh atas (putih transparan, dibulatkan). Di-cache."""
+    w, h = max(1, int(w)), max(1, int(h)); k = ('gloss', w, h, rad, a); s = _GC.get(k)
+    if s is None:
+        if len(_GC) > 500: _GC.clear()
+        s = pygame.Surface((w, h), pygame.SRCALPHA); hh = max(1, int(h * 0.5))
+        for y in range(hh): pygame.draw.line(s, (255, 255, 255, int(a * (1 - y / float(hh)) ** 1.5)), (0, y), (w, y))
+        if rad > 0:
+            m = pygame.Surface((w, h), pygame.SRCALPHA); pygame.draw.rect(m, (255, 255, 255, 255), (0, 0, w, h), border_radius=rad)
+            s.blit(m, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+        _GC[k] = s
+    return s
+
+
+_PSH = 7
+
+
 def panel(r, a=214, rad=14, gold=False):
+    """Panel kaca gelap: bayangan lembut, gradien biru malam, kilau atas, bingkai ganda (emas bila gold) + siku emas."""
     r = pygame.Rect(r)
     if r.w <= 4 or r.h <= 4: return
-    k = ('panel', r.w, r.h, a, rad, gold); s = _PC.get(k)
+    k = ('panel2', r.w, r.h, a, rad, gold); s = _PC.get(k); P_ = _PSH
     if s is None:
         if len(_PC) > 600: _PC.clear()
-        s = pygame.Surface((r.w, r.h), pygame.SRCALPHA)
-        s.blit(vgrad(r.w, r.h, (24, 33, 64), (11, 16, 34), rad, a), (0, 0))
-        pygame.draw.rect(s, (C_GOLD + (235,)) if gold else (122, 144, 206, 130), (0, 0, r.w, r.h), 2, border_radius=rad)
-        pygame.draw.line(s, (255, 255, 255, 24), (rad, 3), (max(rad, r.w - rad), 3))
+        s = pygame.Surface((r.w + 2 * P_, r.h + 2 * P_ + 3), pygame.SRCALPHA)
+        for i in range(P_, 0, -1): pygame.draw.rect(s, (2, 4, 14, 10 + (P_ - i) * 5), (P_ - i, P_ - i + 3, r.w + 2 * i, r.h + 2 * i), border_radius=rad + i)
+        top, bot = ((40, 48, 96), (13, 17, 38)) if gold else ((32, 44, 86), (12, 17, 38))
+        s.blit(vgrad(r.w, r.h, top, bot, rad, a), (P_, P_))
+        s.blit(gloss(max(1, r.w - 4), r.h, max(1, rad - 2), 20), (P_ + 2, P_ + 1))
+        pygame.draw.rect(s, (4, 6, 16, 230), (P_ - 1, P_ - 1, r.w + 2, r.h + 2), 1, border_radius=rad + 1)
+        pygame.draw.rect(s, (C_GOLD + (240,)) if gold else (118, 142, 208, 150), (P_, P_, r.w, r.h), 2, border_radius=rad)
+        pygame.draw.rect(s, (C_GOLD + (58,)) if gold else (255, 255, 255, 20), (P_ + 3, P_ + 3, max(1, r.w - 6), max(1, r.h - 6)), 1, border_radius=max(1, rad - 3))
+        if gold and r.w >= 140 and r.h >= 56:
+            for cx_, cy_, dx, dy in ((P_ + 8, P_ + 8, 1, 1), (P_ + r.w - 9, P_ + 8, -1, 1), (P_ + 8, P_ + r.h - 9, 1, -1), (P_ + r.w - 9, P_ + r.h - 9, -1, -1)):
+                pygame.draw.line(s, C_GOLD + (255,), (cx_, cy_), (cx_ + dx * 12, cy_), 2); pygame.draw.line(s, C_GOLD + (255,), (cx_, cy_), (cx_, cy_ + dy * 12), 2)
         _PC[k] = s
-    screen.blit(s, r.topleft)
+    screen.blit(s, (r.x - P_, r.y - P_))
+
+
+def disc(r, top, bot, edge, a=255, ga=70):
+    """Cakram tombol bulat: bayangan, gradien, kilau kaca, cincin tepi. Ukuran 2r+8 (dipakai joystick & tombol aksi)."""
+    k = ('disc', r, top, bot, edge, a, ga); s = _PC.get(k)
+    if s is None:
+        if len(_PC) > 600: _PC.clear()
+        r = max(6, int(r)); s = pygame.Surface((2 * r + 8, 2 * r + 8), pygame.SRCALPHA); c = (r + 4, r + 4)
+        pygame.draw.circle(s, (0, 0, 0, 70), (c[0], c[1] + 3), r + 1)
+        gd = vgrad(2 * r, 2 * r, top, bot, 0, a).copy(); m = pygame.Surface((2 * r, 2 * r), pygame.SRCALPHA)
+        pygame.draw.circle(m, (255, 255, 255, 255), (r, r), r); gd.blit(m, (0, 0), special_flags=pygame.BLEND_RGBA_MULT); s.blit(gd, (4, 4))
+        s.blit(gloss(max(1, 2 * r - 14), 2 * r, max(1, r - 7), ga), (4 + 7, 4 + 3))
+        pygame.draw.circle(s, (4, 6, 16, 230), c, r + 1, 1)
+        pygame.draw.circle(s, edge + (255,), c, r, 4)
+        pygame.draw.circle(s, (255, 255, 255, 46), c, max(2, r - 6), 1)
+        _PC[k] = s
+    return s
+
+
+_GLW = {}
+
+
+def glow_dot(r, lv=1):
+    k = (r, lv); s = _GLW.get(k)
+    if s is None:
+        r = max(3, int(r)); s = pygame.Surface((r * 2 + 2, r * 2 + 2), pygame.SRCALPHA); a0 = (60, 120, 200)[lv]
+        for i in range(r, 0, -1): pygame.draw.circle(s, (255, 226, 150, int(a0 * (1 - i / float(r)) ** 1.7) + 4), (r + 1, r + 1), i)
+        _GLW[k] = s
+    return s
+
+
+_MOTES = None
+
+
+def draw_motes(t):
+    """Kunang-kunang emas yang melayang pelan (judul & pilih karakter)."""
+    global _MOTES
+    if _MOTES is None:
+        rnd = random.Random(11); _MOTES = [(rnd.random(), rnd.random(), 0.010 + rnd.random() * 0.03, rnd.random() * 6.28, rnd.choice((4, 5, 6, 8))) for _ in range(38)]
+    for fx, fy, sp, ph, rr in _MOTES:
+        x = int((fx * W + math.sin(t / 1900.0 + ph) * 22) % W); y = int(((fy - t * sp / 1000.0) % 1.0) * H)
+        screen.blit(glow_dot(rr, int((0.5 + 0.5 * math.sin(t / 650.0 + ph)) * 2.99)), (x - rr, y - rr))
+
+
+def ornament(cx, y, half, col=None):
+    col = col or C_GOLD
+    pygame.draw.line(screen, col, (cx - half, y), (cx - 12, y), 2); pygame.draw.line(screen, col, (cx + 12, y), (cx + half, y), 2)
+    pygame.draw.polygon(screen, col, [(cx, y - 6), (cx + 6, y), (cx, y + 6), (cx - 6, y)])
+    for sx in (-1, 1): pygame.draw.circle(screen, col, (cx + sx * (half + 7), y), 3)
+
+
+def logo_surf(text, font, pad=24):
+    """Logo: huruf bergradien emas, kontur cokelat, bayangan dan pendar emas. Di-cache."""
+    k = ('logo', text, id(font)); s = _TG.get(k)
+    if s is None:
+        tw = font.render(text, True, (255, 255, 255)); w, h = tw.get_size()
+        s = pygame.Surface((w + pad * 2, h + pad * 2 + 6), pygame.SRCALPHA)
+        gl = pygame.Surface((w + pad * 2, h + pad * 2), pygame.SRCALPHA); gl.blit(tw, (pad, pad))
+        sm = pygame.transform.smoothscale(gl, (max(1, gl.get_width() // 5), max(1, gl.get_height() // 5)))
+        bg = pygame.transform.smoothscale(sm, gl.get_size()); bg.fill(C_GOLD + (255,), special_flags=pygame.BLEND_RGBA_MULT)
+        s.blit(bg, (0, 0)); s.blit(bg, (0, 0))
+        dk = font.render(text, True, (58, 32, 10))
+        for dx, dy in ((-3, 0), (3, 0), (0, -3), (0, 3), (-2, -2), (2, -2), (-2, 2), (2, 2), (-2, 6), (0, 6), (2, 6)): s.blit(dk, (pad + dx, pad + dy))
+        g2 = vgrad(w, h, (255, 246, 200), (222, 148, 50)).copy(); g2.blit(tw, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
+        s.blit(g2, (pad, pad)); _TG[k] = s
+    return s
 
 
 def veil(a, col=(6, 9, 20)):
@@ -251,10 +428,20 @@ def fade_v(r, a_top, a_bot, col=(5, 8, 20)):
 
 
 def bar(x, y, w, h, v, m, col, label=None):
-    r = pygame.Rect(x, y, w, h); rad = h // 2
-    shape(r, (6, 9, 20, 225), rad, (96, 112, 160, 150), 1)
+    r = pygame.Rect(x, y, w, h); rad = h // 2; k = ('bar2', w, h); s = _PC.get(k)
+    if s is None:
+        if len(_PC) > 600: _PC.clear()
+        s = pygame.Surface((w, h), pygame.SRCALPHA)
+        pygame.draw.rect(s, (3, 5, 14, 240), (0, 0, w, h), border_radius=rad)
+        pygame.draw.rect(s, (18, 24, 48, 255), (1, 1, max(1, w - 2), max(1, h - 2)), border_radius=max(1, rad - 1))
+        pygame.draw.rect(s, (0, 0, 0, 110), (2, 2, max(1, w - 4), max(1, h // 3)), border_radius=max(1, rad // 2))
+        pygame.draw.rect(s, (132, 152, 212, 150), (0, 0, w, h), 1, border_radius=rad)
+        _PC[k] = s
+    screen.blit(s, (x, y))
     fw = int((w - 2) * clamp(v / float(max(1, m)), 0.0, 1.0))
-    if fw >= 3: screen.blit(vgrad(fw, h - 2, mix(col, (255, 255, 255), 0.32), mix(col, (0, 0, 0), 0.22), max(1, rad - 1)), (x + 1, y + 1))
+    if fw >= 3:
+        screen.blit(vgrad(fw, h - 2, mix(col, (255, 255, 255), 0.38), mix(col, (0, 0, 0), 0.30), max(1, rad - 1)), (x + 1, y + 1))
+        screen.blit(gloss(fw, h - 2, max(1, rad - 1), 95), (x + 1, y + 1))
     if label: txt(label, x + w // 2, y + (h - F_XS.get_height()) // 2, F_XS, C_TEXT, True, 'c')
 
 
@@ -266,8 +453,19 @@ BTN = {'primary': ((98, 154, 255), (46, 92, 204), (170, 204, 255)), 'gold': ((25
 def button(r, label, kind='primary', sel=False, font=None, icon=None, cap=None):
     r = pygame.Rect(r); top, bot, edge = BTN[kind]
     if sel: top, bot = mix(top, (255, 255, 255), 0.2), mix(bot, (255, 255, 255), 0.12)
-    screen.blit(vgrad(r.w, r.h, top, bot, 12), r.topleft)
-    shape(r, None, 12, edge + ((255,) if sel else (170,)), 3 if sel else 2)
+    k = ('btn2', r.w, r.h, kind, sel); s = _PC.get(k); B = 6
+    if s is None:
+        if len(_PC) > 600: _PC.clear()
+        rad = max(4, min(14, r.h // 2)); s = pygame.Surface((r.w + 2 * B, r.h + 2 * B + 3), pygame.SRCALPHA)
+        for i in range(B, 0, -1): pygame.draw.rect(s, (2, 4, 14, 14 + (B - i) * 8), (B - i, B - i + 3, r.w + 2 * i, r.h + 2 * i), border_radius=rad + i)
+        if sel: pygame.draw.rect(s, C_GOLD + (80,), (B - 4, B - 4, r.w + 8, r.h + 8), 4, border_radius=rad + 4)
+        s.blit(vgrad(r.w, r.h, top, bot, rad), (B, B))
+        s.blit(gloss(max(1, r.w - 6), r.h, max(1, rad - 1), 72), (B + 3, B + 2))
+        pygame.draw.line(s, mix(bot, (0, 0, 0), 0.4) + (210,), (B + rad, B + r.h - 2), (B + r.w - rad, B + r.h - 2), 2)
+        pygame.draw.rect(s, (4, 6, 16, 220), (B - 1, B - 1, r.w + 2, r.h + 2), 1, border_radius=rad + 1)
+        pygame.draw.rect(s, edge + ((255,) if sel else (200,)), (B, B, r.w, r.h), 3 if sel else 2, border_radius=rad)
+        _PC[k] = s
+    screen.blit(s, (r.x - B, r.y - B))
     col = (44, 30, 8) if kind == 'gold' else C_TEXT; font = font or F_MB
     ic = int(min(r.h * 0.5, 30)) if icon else 0; lw = font.size(label)[0] if label else 0
     tot = lw + (ic + 10 if icon and label else ic)
@@ -395,7 +593,19 @@ def _ic_home(s, c, u):
     pygame.draw.rect(s, (0, 0, 0, 0), (int(10 * u), int(14.5 * u), int(4 * u), int(6 * u)))
 
 
-ICONS = {'bag': _ic_bag, 'gear': _ic_gear, 'save': _ic_save, 'load': _ic_load, 'close': _ic_close, 'chat': _ic_chat, 'potion': _ic_potion,
+def _ic_sun(s, c, u):
+    cx = cy = int(12 * u); pygame.draw.circle(s, c, (cx, cy), int(5.2 * u))
+    for i in range(8):
+        a = i * math.pi / 4
+        pygame.draw.line(s, c, (cx + int(math.cos(a) * 8 * u), cy + int(math.sin(a) * 8 * u)), (cx + int(math.cos(a) * 11 * u), cy + int(math.sin(a) * 11 * u)), max(1, int(1.9 * u)))
+
+
+def _ic_moon(s, c, u):
+    pygame.draw.circle(s, c, (int(11 * u), int(12 * u)), int(8.8 * u))
+    pygame.draw.circle(s, (0, 0, 0, 0), (int(15.6 * u), int(9.4 * u)), int(7.4 * u))
+
+
+ICONS = {'sun': _ic_sun, 'moon': _ic_moon, 'bag': _ic_bag, 'gear': _ic_gear, 'save': _ic_save, 'load': _ic_load, 'close': _ic_close, 'chat': _ic_chat, 'potion': _ic_potion,
          'sword': _ic_sword, 'bolt': _ic_bolt, 'run': _ic_run, 'down': _ic_chev_d, 'up': _ic_chev_u, 'right': _ic_chev_r, 'coin': _ic_coin,
          'diamond': _ic_diamond, 'play': _ic_play, 'home': _ic_home}
 
@@ -494,7 +704,7 @@ def splash(label, p):
         pygame.event.pump()
         screen.fill(C_BG)
         screen.blit(vgrad(W, H, (22, 32, 66), (8, 11, 24)), (0, 0))
-        txt("ELDENVALE", W // 2, H // 2 - 92, F_XL, C_GOLD, True, 'c')
+        lg = logo_surf("ELDENVALE", F_XL, 18); screen.blit(lg, ((W - lg.get_width()) // 2, H // 2 - 100))
         txt("Memuat dunia...", W // 2, H // 2 - 36, F_S, C_MUTE, False, 'c')
         bw = min(380, W - 120); bx = (W - bw) // 2
         bar(bx, H // 2 + 4, bw, 14, p, 1.0, C_GOLD)
@@ -519,9 +729,10 @@ def load_world():
     for _n in NPCS: _n['pos'] = V.NPC_POS.get(_n['name'], _n['pos'])   # posisi NPC sudah divalidasi (tidak di dalam bangunan/tebing)
 
 
-def make_portrait(d, zoom=1.0, dy=0.04, ci=None):
+def make_portrait(d, zoom=1.0, dy=0.04, ci=None, base=None):
     ci = P.char if ci is None else ci
-    base = img('chars', f'c{ci}_idle_down.png'); bw, bh = base.get_size()
+    if base is None: base = img('chars', f'c{ci}_idle_down.png')
+    bw, bh = base.get_size()
     crop = base.subsurface((0, 0, bw, max(1, int(bh * 0.56)))).copy()
     sc = d * zoom / float(bw)
     crop = pygame.transform.smoothscale(crop, (max(1, int(bw * sc)), max(1, int(crop.get_height() * sc))))
@@ -1313,20 +1524,19 @@ def build_touch():
     ax, ay = W - SAFE_X - 22 - ar, H - SAFE_Y - 40 - ar
     TB = {'A': (ax, ay, ar), 'B': (ax - ar - br - 20, ay + ar - br, br)}
     d = 2 * JR + 8
-    T_BASE = pygame.Surface((d, d), pygame.SRCALPHA)
-    pygame.draw.circle(T_BASE, (255, 255, 255, al // 5), (d // 2, d // 2), JR)
-    pygame.draw.circle(T_BASE, (255, 255, 255, al), (d // 2, d // 2), JR, 3)
-    pygame.draw.circle(T_BASE, (255, 255, 255, al // 3), (d // 2, d // 2), int(JR * 0.55), 2)
-    kd = int(78 * sz); T_KNOB = pygame.Surface((kd, kd), pygame.SRCALPHA)
-    pygame.draw.circle(T_KNOB, (255, 226, 150, min(255, al + 40)), (kd // 2, kd // 2), kd // 2)
-    pygame.draw.circle(T_KNOB, (255, 250, 220, min(255, al + 70)), (kd // 2, kd // 2), kd // 2 - 10)
+    T_BASE = pygame.Surface((d, d), pygame.SRCALPHA); c = (d // 2, d // 2)
+    pygame.draw.circle(T_BASE, (8, 12, 30, al // 2), c, JR); pygame.draw.circle(T_BASE, (255, 255, 255, al // 6), c, JR)
+    pygame.draw.circle(T_BASE, (255, 255, 255, al), c, JR, 3); pygame.draw.circle(T_BASE, (255, 255, 255, al // 3), c, int(JR * 0.58), 2)
+    for ang in (0, 90, 180, 270):
+        a = math.radians(ang); px_, py_ = c[0] + math.cos(a) * JR * 0.80, c[1] + math.sin(a) * JR * 0.80; ca, sa = math.cos(a), math.sin(a)
+        pygame.draw.polygon(T_BASE, (255, 255, 255, min(255, al)), [(px_ + ca * 7, py_ + sa * 7), (px_ - ca * 4 - sa * 7, py_ - sa * 4 + ca * 7), (px_ - ca * 4 + sa * 7, py_ - sa * 4 - ca * 7)])
+    kd = int(78 * sz); T_KNOB = disc(kd // 2 - 4, (255, 238, 176), (214, 158, 66), (255, 246, 214), min(255, al + 60), 110)
     T_BTN = {}
     for nm, (_, _, r) in TB.items():
-        s = pygame.Surface((2 * r + 8, 2 * r + 8), pygame.SRCALPHA); c = (r + 4, r + 4)
-        pygame.draw.circle(s, (12, 18, 38, min(255, al + 30)), c, r)
-        pygame.draw.circle(s, (C_GOLD if nm == 'A' else (120, 190, 255)) + (min(255, al + 80),), c, r, 4)
-        ic = icon_s('chat' if nm == 'A' else 'potion', int(r * 0.95), C_GOLD if nm == 'A' else (150, 210, 255)); s.blit(ic, (c[0] - ic.get_width() // 2, c[1] - ic.get_height() // 2))
-        T_BTN[nm] = s
+        col = C_GOLD if nm == 'A' else (120, 190, 255)
+        s_ = disc(r, (28, 38, 74), (10, 14, 32), col, min(255, al + 50), 60).copy(); c_ = (r + 4, r + 4)
+        ic = icon_s('chat' if nm == 'A' else 'potion', int(r * 0.95), C_GOLD if nm == 'A' else (150, 210, 255)); s_.blit(ic, (c_[0] - ic.get_width() // 2, c_[1] - ic.get_height() // 2))
+        T_BTN[nm] = s_
     combat.build_layout()
 
 
@@ -1371,27 +1581,34 @@ def quest_text():
 
 
 def draw_hud():
-    r = HUD_L; panel(r, 208, 18)
-    screen.blit(PORT_HUD, (r.x + 12, r.y + 15)); pygame.draw.circle(screen, C_GOLD, (r.x + 42, r.y + 45), 30, 2)
-    pygame.draw.circle(screen, (24, 34, 72), (r.x + 58, r.y + 66), 13); pygame.draw.circle(screen, C_GOLD, (r.x + 58, r.y + 66), 13, 2)
-    txt(str(P.lv), r.x + 58, r.y + 66 - F_XS.get_height() // 2, F_XS, C_GOLD, False, 'c')
+    r = HUD_L; panel(r, 214, 18); ci = P.char if 0 <= P.char < len(CHARS) else 0
+    cx, cy = r.x + 42, r.y + 45
+    pygame.draw.circle(screen, (8, 12, 28), (cx, cy), 34); screen.blit(PORT_HUD, (r.x + 12, r.y + 15))
+    pygame.draw.circle(screen, C_GOLD, (cx, cy), 31, 3); pygame.draw.circle(screen, (255, 255, 255), (cx, cy), 28, 1)
+    bx_, by_ = r.x + 62, r.y + 66
+    pygame.draw.circle(screen, (6, 9, 20), (bx_, by_), 15); pygame.draw.circle(screen, C_GOLD, (bx_, by_), 13); pygame.draw.circle(screen, (255, 244, 200), (bx_, by_), 13, 2)
+    txt(str(P.lv), bx_, by_ - F_XS.get_height() // 2 - 1, F_XS, (50, 30, 6), False, 'c')
     bx, bw = r.x + 84, r.w - 84 - 14
-    txt("Kael", bx, r.y + 5, F_SB, C_TEXT); txt("Ksatria", r.right - 14, r.y + 8, F_XS, C_MUTE, False, 'r')
+    nw = txt(CHARS[ci]['name'], bx, r.y + 5, F_SB, C_TEXT)
+    txt(fit(CHARS[ci]['title'], F_XS, max(30, bw - nw - 10)), r.right - 14, r.y + 8, F_XS, C_MUTE, False, 'r')
     bar(bx, r.y + 33, bw, 18, P.hp, P.maxhp, C_GREEN, f"HP {P.hp}/{P.maxhp}")
     bar(bx, r.y + 55, bw, 15, P.mp, P.maxmp, C_MP, f"MP {P.mp}/{P.maxmp}")
     bar(bx, r.y + 75, bw, 6, P.xp, need(P.lv), C_XP)
     for nm, hr in HB.items():
         active = (nm == 'TAS' and mode == 'inv')
         button(hr, '', 'primary' if active else 'dark', icon={'TAS': 'bag', 'SETELAN': 'gear', 'SIMPAN': 'save'}[nm])
-    g = HUD_G; panel(g, 208, 14)
+    g = HUD_G; panel(g, 214, 14)
     screen.blit(icon_s('coin', 24, C_GOLD), (g.x + 12, g.centery - 12)); txt(str(P.gold), g.x + 44, g.centery - F_MB.get_height() // 2, F_MB, C_GOLD)
     txt(f"Tas {len(P.bag)}/{MAXBAG}", g.right - 12, g.centery - F_XS.get_height() // 2, F_XS, C_MUTE, False, 'r')
     q = HUD_Q; lines = []
     for _t in quest_lines(): lines += wrap(_t, F_S, q.w - 28)
-    lines = lines[:4]; q.h = 36 + len(lines) * 19; panel(q, 208, 14)
+    lines = lines[:4]; q.h = 40 + len(lines) * 19; panel(q, 214, 14)
     screen.blit(icon_s('diamond', 14, C_GOLD), (q.x + 12, q.y + 10)); txt("MISI", q.x + 32, q.y + 5, F_XS, C_GOLD, False)
-    txt(clock_str(), q.right - 12, q.y + 5, F_XS, C_MUTE, False, 'r')
-    for i, l in enumerate(lines): txt(l, q.x + 14, q.y + 28 + i * 19, F_S, C_TEXT, False if i else True)
+    cs_ = clock_str().replace('Hari ', 'H'); night = is_night(); cw_ = F_XS.size(cs_)[0]
+    txt(cs_, q.right - 12, q.y + 5, F_XS, C_MUTE, False, 'r')
+    screen.blit(icon_s('moon' if night else 'sun', 16, (190, 205, 255) if night else (255, 214, 120)), (q.right - 12 - cw_ - 22, q.y + 6))
+    pygame.draw.line(screen, (C_GOLD[0], C_GOLD[1], C_GOLD[2]), (q.x + 12, q.y + 26), (q.right - 12, q.y + 26), 1)
+    for i, l in enumerate(lines): txt(l, q.x + 14, q.y + 32 + i * 19, F_S, C_TEXT, False if i else True)
     if not ANDROID and not show_touch():
         t = ("WASD / Panah: jalan    J / Spasi: serang    1 2 3 4: skill    P: ramuan    I: tas" if combat.active() else
              "WASD / Panah: jalan    Z / Spasi: bicara & berladang    I: tas    P: ramuan    F5: simpan")
@@ -1409,10 +1626,10 @@ def draw_toast():
     else: tw, y = min(W - 2 * SAFE_X, 460), SAFE_Y + 98
     lines = wrap(toast[0], F_S, tw - 32)[:2]; h = 18 + len(lines) * 21
     k = clamp((toast[1] - t) / 2600.0, 0.0, 1.0); slide = int(max(0.0, (k - 0.92)) * 12 * 20) if k > 0.92 else 0
-    w = max(max(F_S.size(l)[0] for l in lines) + 36, 150) if lines else 150
+    w = max(max(F_S.size(l)[0] for l in lines) + 62, 170) if lines else 170
     r = pygame.Rect(0, 0, w, h); r.midtop = (W // 2 if (avail < 280 or mode == 'inv') else (left + right) // 2, y - slide)
-    panel(r, 232, 14, True)
-    for i, l in enumerate(lines): txt(l, r.centerx, r.y + 9 + i * 21, F_S, C_TEXT, True, 'c')
+    panel(r, 236, 14, True); screen.blit(icon_s('diamond', 16, C_GOLD), (r.x + 14, r.centery - 8))
+    for i, l in enumerate(lines): txt(l, r.centerx + 12, r.y + 9 + i * 21, F_S, C_TEXT, True, 'c')
 
 
 # ---------------- title ----------------
@@ -1487,21 +1704,23 @@ def charsel_press(x, y):
 
 
 def draw_charsel():
-    draw_town_bg(); t = pygame.time.get_ticks()
-    txt("PILIH KARAKTER", W // 2, max(SAFE_Y, int(H * 0.045)), F_L, C_GOLD, True, 'c')
-    txt("Pilih tokoh yang akan kamu mainkan", W // 2, max(SAFE_Y, int(H * 0.045)) + F_L.get_height() + 2, F_XS, C_MUTE, False, 'c')
+    draw_town_bg(); t = pygame.time.get_ticks(); veil(60)
+    if S['fx']: draw_motes(t)
+    y0 = max(SAFE_Y, int(H * 0.04)); txt("PILIH KARAKTER", W // 2, y0, F_L, C_GOLD, True, 'c'); ornament(W // 2, y0 + F_L.get_height() + 12, 80)
     cards, btns, _ = charsel_layout()
     for i, r in enumerate(cards):
-        sel = i == CS['idx']; panel(r, 236 if sel else 186, 16, sel)
-        if sel: shape(r, None, 16, C_GOLD + (255,), 3)
-        ty = r.bottom - F_XS.get_height() - 10; ny = ty - F_MB.get_height() - 2; gy = ny - 6
+        sel = i == CS['idx']; panel(r, 240 if sel else 190, 16, sel)
+        ty = r.bottom - F_XS.get_height() - 12; ny = ty - F_MB.get_height() - 2; gy = ny - 8
         ph = max(24, min(gy - r.y - 14, int(r.w * 1.05)))
-        sh_ = pygame.Surface((int(ph * 0.7), max(4, int(ph * 0.12))), pygame.SRCALPHA); pygame.draw.ellipse(sh_, (0, 0, 0, 110), sh_.get_rect())
+        if sel:
+            gd = glow_dot(max(24, int(min(r.w, r.h) * 0.46)), 2); screen.blit(gd, (r.centerx - gd.get_width() // 2, gy - ph // 2 - gd.get_height() // 2))
+        sh_ = pygame.Surface((int(ph * 0.7), max(4, int(ph * 0.12))), pygame.SRCALPHA); pygame.draw.ellipse(sh_, (0, 0, 0, 120), sh_.get_rect())
         screen.blit(sh_, (r.centerx - sh_.get_width() // 2, gy - sh_.get_height() // 2 - 2))
         pim = char_pic(i, 'down', (t // 170) % 4, ph) if sel else char_pic(i, 'idle', 0, ph)
         screen.blit(pim, (r.centerx - pim.get_width() // 2, gy - pim.get_height() - (int(abs(math.sin(t / 170.0)) * 3) if sel else 0)))
+        pl = pygame.Rect(r.x + 8, ny - 4, r.w - 16, F_MB.get_height() + F_XS.get_height() + 10); shape(pl, (6, 10, 24, 175), 10, (C_GOLD + (150,)) if sel else (255, 255, 255, 30), 1)
         txt(CHARS[i]['name'], r.centerx, ny, F_MB, C_GOLD if sel else C_TEXT, True, 'c')
-        txt(CHARS[i]['title'], r.centerx, ty, F_XS, C_MUTE, False, 'c')
+        txt(fit(CHARS[i]['title'], F_XS, r.w - 24), r.centerx, ty, F_XS, C_MUTE, False, 'c')
     button(btns[0], 'Kembali', 'dark', False, F_MB, 'close'); button(btns[1], 'Mulai', 'gold', True, F_MB, 'play')
 
 
@@ -1525,13 +1744,16 @@ def draw_town_bg():
 
 
 def draw_title():
-    draw_town_bg()
-    ty = int(H * 0.085); a = rt("ELDENVALE", F_T, C_GOLD)
-    txt("ELDENVALE", W // 2, ty, F_T, C_GOLD, True, 'c')
-    s = spaced("PETUALANGAN RPG", F_S, C_TEXT, 7); screen.blit(s, ((W - s.get_width()) // 2, ty + a.get_height() + 2))
-    pygame.draw.line(screen, C_GOLD, (W // 2 - 70, ty + a.get_height() + 34), (W // 2 + 70, ty + a.get_height() + 34), 2)
+    draw_town_bg(); t = pygame.time.get_ticks()
+    fade_v((0, int(H * 0.30), W, H - int(H * 0.30)), 0, 130)
+    if S['fx']: draw_motes(t)
+    lg = logo_surf("ELDENVALE", F_T); ty = int(H * 0.035)
+    screen.blit(lg, ((W - lg.get_width()) // 2, ty + int(2 * math.sin(t / 900.0))))
+    sy = ty + lg.get_height() - 14; sp = spaced("PETUALANGAN RPG", F_S, C_TEXT, 8); screen.blit(sp, ((W - sp.get_width()) // 2, sy))
+    ornament(W // 2, sy + sp.get_height() + 16, 100)
     for i, r in enumerate(title_rects()):
-        lab, act, kind, ic = title['items'][i]; button(r, lab, kind, i == title['idx'], F_MB, ic)
+        lab, act, kind, ic = title['items'][i]; on = i == title['idx']; button(r, lab, kind, on, F_MB, ic)
+        if on: screen.blit(icon_s('right', 22, C_GOLD), (r.x - 36 + int(3 * math.sin(t / 220.0)), r.centery - 11))
     txt(f"Versi {VERSION}", SAFE_X, H - SAFE_Y - 22, F_XS, C_MUTE, False)
     hint = "Ketuk untuk memilih" if (ANDROID or touch_seen) else "Panah + Enter / klik untuk memilih"
     txt(hint, W - SAFE_X, H - SAFE_Y - 22, F_XS, C_MUTE, False, 'r')
@@ -1555,20 +1777,50 @@ def dialog_advance():
         if cb: cb()
 
 
+_SPK = {}
+
+
+def speaker_portrait(name, d=86):
+    """Potret bulat pembicara (NPC) dari sprite aslinya; None untuk narator / tanpa sprite."""
+    k = (name, d)
+    if k in _SPK: return _SPK[k]
+    who = None
+    for n_ in NPCS + HNPCS:
+        if n_['name'] == name: who = n_['who']; break
+    s_ = None
+    if who:
+        for fn in (f'{who}_idle_down.png', f'{who}_down_0.png'):
+            if os.path.exists(A(fn)):
+                try:
+                    pt = make_portrait(d - 10, 1.0, 0.05, 0, img(fn)); s_ = pygame.Surface((d, d), pygame.SRCALPHA)
+                    pygame.draw.circle(s_, (8, 12, 28, 255), (d // 2, d // 2), d // 2); s_.blit(pt, (5, 5))
+                    pygame.draw.circle(s_, C_GOLD + (255,), (d // 2, d // 2), d // 2 - 1, 3); pygame.draw.circle(s_, (255, 255, 255, 60), (d // 2, d // 2), d // 2 - 5, 1)
+                except Exception: s_ = None
+                break
+    _SPK[k] = s_; return s_
+
+
 def draw_dialog():
-    d = dialog; r = dialog_rect(); panel(r, 232, 18, True)
-    full = d['lines'][d['i']]
-    if d['wi'] != d['i']: d['wl'] = wrap(full, F_M, r.w - 64); d['wi'] = d['i']
-    nm = d['name']; nw = F_MB.size(nm)[0] + 40; nr = pygame.Rect(r.x + 22, r.y - 18, nw, 36)
-    screen.blit(vgrad(nw, 36, (252, 214, 130), (206, 150, 58), 12), nr.topleft); shape(nr, None, 12, (255, 240, 190, 220), 2)
-    txt(nm, nr.centerx, nr.y + 3, F_MB, (44, 30, 8), False, 'c')
+    d = dialog; r = dialog_rect(); panel(r, 238, 18, True)
+    full = d['lines'][d['i']]; nm = d['name']; pt = speaker_portrait(nm)
+    tx = r.x + 32 + ((pt.get_width() + 14) if pt else 0)
+    if d['wi'] != d['i']: d['wl'] = wrap(full, F_M, r.right - 34 - tx); d['wi'] = d['i']
+    if pt: screen.blit(pt, (r.x + 24, r.centery - pt.get_height() // 2 + 6))
+    nw = F_MB.size(nm)[0] + 46; nr = pygame.Rect(r.x + 24, r.y - 20, nw, 38)
+    screen.blit(vgrad(nw, 38, (255, 226, 144), (206, 148, 56), 13), nr.topleft); screen.blit(gloss(nw - 6, 38, 11, 90), (nr.x + 3, nr.y + 2))
+    shape(nr, None, 13, (255, 244, 200, 235), 2)
+    for sx in (nr.x + 14, nr.right - 14): pygame.draw.polygon(screen, (120, 78, 20), [(sx, nr.centery - 4), (sx + 4, nr.centery), (sx, nr.centery + 4), (sx - 4, nr.centery)])
+    txt(nm, nr.centerx, nr.y + 4, F_MB, (44, 30, 8), False, 'c')
     rem = int(d['shown']); y = r.y + 30
     for l in d['wl'][:4]:
         part = l[:max(0, rem)]
-        if part: txt(part, r.x + 32, y, F_M, C_TEXT)
+        if part: txt(part, tx, y, F_M, C_TEXT)
         rem -= len(l) + 1; y += 30
+    n_ = len(d['lines'])
+    if n_ > 1:
+        for j in range(n_): pygame.draw.circle(screen, C_GOLD if j == d['i'] else (84, 96, 140), (r.x + 36 + j * 14, r.bottom - 16), 4 if j == d['i'] else 3)
     if d['shown'] >= len(full):
-        t = pygame.time.get_ticks(); bob = int(3 * math.sin(t / 180.0)); last = d['i'] >= len(d['lines']) - 1
+        t = pygame.time.get_ticks(); bob = int(3 * math.sin(t / 180.0))
         screen.blit(icon_s('down', 22, C_GOLD), (r.right - 50, r.bottom - 38 + bob))
         txt("Ketuk" if (ANDROID or touch_seen) else "Z / Spasi", r.right - 60, r.bottom - 34, F_XS, C_MUTE, False, 'r')
 
@@ -1601,14 +1853,18 @@ def draw_menu():
     txt(menu['title'], box.x + 24, box.y + 14, F_L, C_GOLD)
     gr = pygame.Rect(0, 0, 124, 34); gr.topright = (box.right - 22, box.y + 18); shape(gr, (8, 12, 26, 190), 17, (255, 255, 255, 50), 1)
     screen.blit(icon_s('coin', 20, C_GOLD), (gr.x + 10, gr.y + 7)); txt(str(P.gold), gr.right - 12, gr.y + 5, F_MB, C_GOLD, False, 'r')
-    pygame.draw.line(screen, (120, 140, 200), (box.x + 22, box.y + 62), (box.right - 22, box.y + 62), 1)
+    pygame.draw.line(screen, (C_GOLD[0], C_GOLD[1], C_GOLD[2]), (box.x + 22, box.y + 62), (box.right - 22, box.y + 62), 1)
+    pygame.draw.polygon(screen, C_GOLD, [(box.x + 22, box.y + 57), (box.x + 28, box.y + 62), (box.x + 22, box.y + 67), (box.x + 16, box.y + 62)])
     screen.set_clip(lr)
     for i, it in enumerate(menu['items']):
         y = lr.y + i * ROW - int(menu['off'])
         if y > lr.bottom or y + ROW < lr.y: continue
         rr = pygame.Rect(lr.x, y + 3, lr.w - 14, ROW - 6); on = i == menu['idx']
         afford = it['cost'] is None or P.gold >= it['cost']
-        shape(rr, (70, 100, 190, 215) if on else (255, 255, 255, 14), 12, (C_GOLD + (255,)) if on else None, 2)
+        if on:
+            screen.blit(vgrad(rr.w, rr.h, (96, 128, 222), (54, 80, 168), 12, 244), rr.topleft); shape(rr, None, 12, C_GOLD + (255,), 2)
+            pygame.draw.rect(screen, C_GOLD, (rr.x + 5, rr.y + 10, 4, rr.h - 20), border_radius=2)
+        else: shape(rr, (255, 255, 255, 12), 12, (255, 255, 255, 20), 1)
         x = rr.x + 14
         if it['iid']: screen.blit(icon(it['iid'], 36), (x, rr.centery - 18)); x += 50
         col = C_MUTE if it['fn'] is None else (C_TEXT if afford else (150, 150, 168))
@@ -1717,8 +1973,9 @@ def draw_outdoor():
         screen.blit(im, (sx - im.get_width() // 2, sy - im.get_height() + 6 + bob))
         top = sy - im.get_height() + bob
         if e:
-            lab, col = REC[e['m']['tier']]; tg = tag(f"{e['m']['name']}  {lab}", C_TEXT, col); bs_ = combat.bar_shown(e)
-            screen.blit(tg, (sx - tg.get_width() // 2, top - (38 if bs_ else 26)))
+            lab, col = REC[e['m']['tier']]; bs_ = combat.bar_shown(e)
+            if e['chase'] or e['m']['tier'] == 9 or math.hypot(e['pos'][0] - P.x, e['pos'][1] - P.y) < 340:   # label hanya untuk musuh dekat / mengejar / boss (hutan tidak penuh teks)
+                tg = tag(f"{e['m']['name']}  {lab}", C_TEXT, col); screen.blit(tg, (sx - tg.get_width() // 2, top - (38 if bs_ else 26)))
             if e['chase'] and e['st'] != 'wind':
                 cy_ = top - (64 if bs_ else 40)
                 pygame.draw.circle(screen, C_RED, (sx, cy_), 11); pygame.draw.circle(screen, (255, 255, 255), (sx, cy_), 11, 2)
@@ -1812,7 +2069,8 @@ SET_ROWS = [('fps', 'FPS maksimum', [30, 45, 60, 90, 120], {}), ('show_fps', 'Ta
             ('touch', 'Kontrol sentuh', ['auto', 'on', 'off'], {'auto': 'Otomatis', 'on': 'Selalu', 'off': 'Sembunyi'}),
             ('tsize', 'Ukuran tombol', [0.8, 1, 1.2], {0.8: 'Kecil', 1: 'Sedang', 1.2: 'Besar'}),
             ('talpha', 'Transparansi tombol', [0, 1, 2], {0: 'Samar', 1: 'Sedang', 2: 'Jelas'}),
-            ('speed', 'Kecepatan jalan', [0.8, 1, 1.25], {0.8: 'Santai', 1: 'Normal', 1.25: 'Cepat'})]
+            ('speed', 'Kecepatan jalan', [0.8, 1, 1.25], {0.8: 'Santai', 1: 'Normal', 1.25: 'Cepat'}),
+            ('margin', 'Margin layar (notch)', ['auto', 0, 1, 2, 3], {'auto': 'Otomatis', 0: 'Tanpa', 1: 'Kecil', 2: 'Sedang', 3: 'Besar'})]
 SROWH = 48
 
 
@@ -1854,6 +2112,7 @@ def srow_do(i):
             if k2 == key:
                 j = opts.index(S[k2]) if S[k2] in opts else -1; S[k2] = opts[(j + 1) % len(opts)]
                 if k2 in ('tsize', 'talpha'): build_touch()
+                elif k2 == 'margin': relayout()
     save_settings()
 
 
@@ -1949,7 +2208,7 @@ def draw_inv():
             pygame.draw.rect(screen, (96, 102, 130), r.inflate(-10, -10), border_radius=8); ic = icon(i, int(r.w * 0.78)); screen.blit(ic, ic.get_rect(center=r.center))
         if inv['slot'] == slot: pygame.draw.rect(screen, (255, 225, 110), r, 3, border_radius=8)
     screen.blit(PORT, PORT.get_rect(center=PORT_C))
-    n = NAMEBOX; txt("Kael", n.x + 10, n.y + 3, F_MB, C_INK, False); txt(f"Lv {P.lv}", n.right - 10, n.y + 6, F_SB, (150, 96, 20), False, 'r')
+    n = NAMEBOX; txt(CHARS[P.char if 0 <= P.char < len(CHARS) else 0]['name'], n.x + 10, n.y + 3, F_MB, C_INK, False); txt(f"Lv {P.lv}", n.right - 10, n.y + 6, F_SB, (150, 96, 20), False, 'r')
     rows = [(f"HP {P.hp}/{P.maxhp}", P.hp, P.maxhp, C_GREEN), (f"MP {P.mp}/{P.maxmp}", P.mp, P.maxmp, C_MP), (f"XP {P.xp}/{need(P.lv)}", P.xp, need(P.lv), C_XP)]
     bh = max(13, min(18, (n.h - 36) // 3 - 4))
     for j, (lab, v, m, c) in enumerate(rows): bar(n.x + 10, n.y + 34 + j * (bh + 4), n.w - 20, bh, v, m, c, lab)
@@ -2165,10 +2424,10 @@ def handle_events():
         elif t == pygame.KEYDOWN: handle_key(e.key)
         elif t in BG_EVENTS: autosave(); reset_touch()
         elif t == pygame.FINGERDOWN and ANDROID:
-            last_finger = pygame.time.get_ticks(); touch_seen = True; press(e.finger_id, e.x * W, e.y * H)
-        elif t == pygame.FINGERMOTION and ANDROID: move(e.finger_id, e.x * W, e.y * H)
+            last_finger = pygame.time.get_ticks(); touch_seen = True; press(e.finger_id, *touch_xy(e))
+        elif t == pygame.FINGERMOTION and ANDROID: move(e.finger_id, *touch_xy(e))
         elif t == pygame.FINGERUP and ANDROID:
-            last_finger = pygame.time.get_ticks(); release(e.finger_id, e.x * W, e.y * H)
+            last_finger = pygame.time.get_ticks(); release(e.finger_id, *touch_xy(e))
             if not fingers: joy_vec[0] = joy_vec[1] = 0.0
         elif t == pygame.MOUSEBUTTONDOWN and e.button == 1 and (not ANDROID or pygame.time.get_ticks() - last_finger > 400):
             press('m', e.pos[0], e.pos[1])
@@ -2264,14 +2523,17 @@ def handle_crash():
 
 def frame():
     dt = clock.tick(S['fps'])
+    if poll_insets(): relayout()
     perf_watch(dt); handle_events(); update(min(dt, 60)); draw(); pygame.display.flip()
 
 
 def boot():
-    global W, H, SAFE_X, clock
+    global W, H, clock
     load_settings(); pygame.init()
-    W, H = pick_size(); SAFE_X = 36 if ANDROID else 26
-    make_screen(); pygame.display.set_caption('Eldenvale RPG'); clock = pygame.time.Clock(); init_fonts(); sanitize_settings()
+    if ANDROID: android_setup_window()
+    W, H = pick_size(); make_screen()
+    poll_insets(True); apply_safe()
+    pygame.display.set_caption('Eldenvale RPG'); clock = pygame.time.Clock(); init_fonts(); sanitize_settings()
     steps = [('Memuat peta...', load_world), ('Memuat karakter...', load_sprites), ('Menyiapkan antarmuka...', load_ui)]
     for i, (lab, fn) in enumerate(steps): splash(lab, i / float(len(steps))); fn()
     splash('Siap', 1.0)
