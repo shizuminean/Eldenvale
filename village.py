@@ -258,7 +258,11 @@ NPC_POS = {
     'Kakek Odo': (1420, 1030), 'Penjaga Gerbang': (1640, 1790), 'Putri Elara': (2000, 930), 'Petani Tomo': (2270, 1108),
 }
 SPAWN = (1700, 960)
-LAMPS_A = [(500, 742), (1020, 742), (2300, 742), (2900, 742), (360, 934), (1000, 934), (2420, 934), (2900, 934)]
+# tangga & jembatan pada jalan utama (koordinat dunia): lampu/bendera/dekor tidak boleh berdiri di atasnya
+NOGO = [pygame.Rect(396, 660, 172, 110), pygame.Rect(396, 920, 172, 230), pygame.Rect(2762, 716, 236, 262)]
+# lampu jalan: di tepi jalan, di sisi luar tangga / jembatan (bukan di atasnya)
+LAMPS_A = [(330, 742), (660, 742), (1020, 742), (2300, 742), (2700, 742), (3060, 742),
+           (330, 934), (660, 934), (1000, 934), (2420, 934), (2700, 934), (3060, 934)]
 
 
 def build_town():
@@ -342,14 +346,15 @@ def build_town():
     # lampu jalan di tepi jalan utama (dilewati bila menabrak bangunan / tebing)
     for (px, py) in LAMPS_A:
         r_ = pygame.Rect(px - 36, py - 112, 72, 124)
-        if not terr.walk(pygame.Rect(px - 10, py - 12, 20, 14)) or any(r_.colliderect(o) for o in vis_occ): continue
+        foot = pygame.Rect(px - 30, py - 14, 60, 18)
+        if not terr.walk(pygame.Rect(px - 10, py - 12, 20, 14)) or any(r_.colliderect(o) for o in vis_occ) or any(foot.colliderect(n_) for n_ in NOGO): continue
         im = spr('lamp_a', h=112); add(im, px, py, SH_POLE); lamp_pts.append((px, py - 96)); glows.append((px, py - 96, 90, (255, 200, 110)))
         block.append(pygame.Rect(px - 6, py - 8, 12, 8)); occ.append(pygame.Rect(px - 30, py - 110, 60, 130))
 
     # bendera tiang (hiasan berbayang, pangkal tiang menghalangi sedikit); dilewati bila menabrak bangunan
     for (px, py, nm) in FLAGS:
         r_ = pygame.Rect(px - 40, py - 150, 80, 170)
-        if any(r_.colliderect(o) for o in vis_occ): continue
+        if any(r_.colliderect(o) for o in vis_occ) or any(pygame.Rect(px - 20, py - 14, 40, 18).colliderect(n_) for n_ in NOGO): continue
         im = spr(nm, h=148); add(im, px, py, SH_POLE); block.append(pygame.Rect(px - 6, py - 8, 12, 8)); occ.append(r_)
 
     # gerbang selatan (ujung jalan)

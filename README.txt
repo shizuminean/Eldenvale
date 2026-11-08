@@ -1,3 +1,12 @@
+PERUBAHAN v1.6.0  (pilih karakter pemain + rapikan lampu desa)
+  - LAMPU: lampu jalan tidak lagi berdiri di atas tangga & jembatan. village.py punya daftar NOGO (3 zona: 2 tangga barat, jembatan timur);
+    lampu & bendera yang menyentuh zona itu dilewati. LAMPS_A diganti: 12 titik di tepi jalan, di sisi luar tangga/jembatan.
+  - Game Baru kini membuka layar PILIH KARAKTER: 4 tokoh (Hana, Selene, Kaelen, Ronan) dengan animasi jalan pada kartu yang dipilih.
+    Kontrol: ketuk kartu lalu Mulai (Android) / panah + Enter (PC). Kembali / Esc = ke menu utama.
+  - Sprite baru ada di assets/chars/cN_{down,side,up}_0..3.png (jalan 4 frame), cN_idle_*, cN_battle_idle/atk.
+    Dipakai di dunia, interior, battle, potret HUD, dan potret tas.
+  - Pilihan karakter disimpan di save (kunci 'char'); save lama otomatis memakai karakter 0 (Hana).
+
 PERBAIKAN v1.5.1  (desa rapi, bayangan sesuai bentuk aset, tidak lag, respawn tidak nyangkut)
   - TATA LETAK DESA: rumah/pohon/semak/batu/bunga tidak lagi ditempel di koordinat acak. village.py kini membaca jenis tanah
     dari gambar latar + mask (rumput kosong / jalan tanah / batu & tangga / tebing & air) lewat kelas Terrain, lalu

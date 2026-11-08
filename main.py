@@ -14,7 +14,7 @@ import pygame
 from data import *
 import village as V
 
-VERSION = '1.5.1'
+VERSION = '1.6.0'
 BASE = os.path.dirname(os.path.abspath(__file__))
 A = lambda *p: os.path.join(BASE, 'assets', *p)
 ANDROID = 'ANDROID_ARGUMENT' in os.environ or 'ANDROID_PRIVATE' in os.environ
@@ -518,8 +518,9 @@ def load_world():
     for _n in NPCS: _n['pos'] = V.NPC_POS.get(_n['name'], _n['pos'])   # posisi NPC sudah divalidasi (tidak di dalam bangunan/tebing)
 
 
-def make_portrait(d, zoom=1.0, dy=0.04):
-    base = img('hero_idle_down.png'); bw, bh = base.get_size()
+def make_portrait(d, zoom=1.0, dy=0.04, ci=None):
+    ci = P.char if ci is None else ci
+    base = img('chars', f'c{ci}_idle_down.png'); bw, bh = base.get_size()
     crop = base.subsurface((0, 0, bw, max(1, int(bh * 0.56)))).copy()
     sc = d * zoom / float(bw)
     crop = pygame.transform.smoothscale(crop, (max(1, int(bw * sc)), max(1, int(crop.get_height() * sc))))
@@ -531,12 +532,44 @@ def make_portrait(d, zoom=1.0, dy=0.04):
     return s
 
 
+# ---------- v1.6: pilihan karakter pemain ----------
+CHARS = [dict(name='Hana', title='Miko Bunga Merah'), dict(name='Selene', title='Penyihir Malam'),
+         dict(name='Kaelen', title='Pengembara Berjubah'), dict(name='Ronan', title='Pemburu Bulu Putih')]
+CHAR_SHEETS, CS_RAW, CS_SCL = {}, {}, {}
+CS = dict(idx=0)
+
+
+def char_sheet(ci):
+    if ci not in CHAR_SHEETS: CHAR_SHEETS[ci] = Sheet(f'chars/c{ci}', scale=HS)
+    return CHAR_SHEETS[ci]
+
+
+def char_pic(ci, kind, f, h):
+    """Gambar karakter untuk layar pilih (kind 'idle' atau 'down'), diskalakan ke tinggi h dan di-cache."""
+    k = (ci, kind, f, h); s_ = CS_SCL.get(k)
+    if s_ is None:
+        rk = (ci, kind, f); raw = CS_RAW.get(rk)
+        if raw is None: raw = CS_RAW[rk] = img('chars', f'c{ci}_idle_down.png' if kind == 'idle' else f'c{ci}_down_{f}.png')
+        s_ = CS_SCL[k] = pygame.transform.smoothscale(raw, (max(1, int(raw.get_width() * h / float(max(1, raw.get_height())))), max(1, int(h))))
+    return s_
+
+
+def apply_char(ci):
+    global hero, BAT_IDLE, BAT_ATK, PORT_HUD, PORT
+    try: ci = int(ci)
+    except Exception: ci = 0
+    if not (0 <= ci < len(CHARS)): ci = 0
+    P.char = ci; hero = char_sheet(ci)
+    BAT_IDLE = load(f'chars/c{ci}_battle_idle.png', scale=HS * 3); BAT_ATK = load(f'chars/c{ci}_battle_atk.png', scale=HS * 3)
+    PORT_HUD = make_portrait(60, ci=ci)
+    INT_CACHE.clear()
+    if PORT is not None: PORT = make_portrait(max(8, int(196 * US)), 1.02, 0.05, ci)
+
+
 def load_sprites():
-    global HS, hero, BAT_IDLE, BAT_ATK, PORT_HUD
-    probe = img('hero_idle_down.png'); HS = 76.0 / max(1, probe.get_height())
-    hero = Sheet('hero', scale=HS)
-    BAT_IDLE = load('hero_battle_idle.png', scale=HS * 3); BAT_ATK = load('hero_battle_atk.png', scale=HS * 3)
-    PORT_HUD = make_portrait(60)
+    global HS
+    probe = img('chars', 'c0_idle_down.png'); HS = 76.0 / max(1, probe.get_height())
+    apply_char(P.char)
 
 
 # ---------- UI tas (seni kiri/kanan) : skala menyesuaikan layar ----------
@@ -572,7 +605,7 @@ def load_ui():
     SET_AREA = Lr(100, 262, 590, 548)
     CLOSE = pygame.Rect(W - 70 + 8, SAFE_Y + 6, 54, 54)
     PORT_C = (RX + int(150 * US), RY + int(205 * US))
-    PORT = make_portrait(max(8, int(196 * US)), 1.02, 0.05)
+    PORT = make_portrait(max(8, int(196 * US)), 1.02, 0.05, P.char)
     DIM0 = pygame.Surface(TABR[0].size, pygame.SRCALPHA); pygame.draw.rect(DIM0, (70, 70, 75, 200), DIM0.get_rect(), border_radius=10)
 
 
@@ -627,6 +660,7 @@ class P:
     hp = maxhp = 60
     mp = maxmp = 20
     atk, df = 9, 3
+    char = 0
     wl = 0
     slimes = 0
     quest = 0
@@ -641,7 +675,7 @@ class P:
 DEFAULT = dict(x=float(V.SPAWN[0]), y=float(V.SPAWN[1]), lv=1, xp=0, gold=60, hp=60, maxhp=60, mp=20, maxmp=20, atk=9, df=3, wl=0, slimes=0, quest=0,
                bag=[['potion_hp', 3], ['potion_mp', 1], ['bread', 2], ['dagger', 1]] + [list(x) for x in START_SEEDS], tm=420.0, day=1, gq={}, farm={})
 MAXBAG = 30
-SAVE_KEYS = ['x', 'y', 'lv', 'xp', 'gold', 'hp', 'maxhp', 'mp', 'maxmp', 'atk', 'df', 'wl', 'slimes', 'quest', 'bag', 'eq', 'tm', 'day', 'gq', 'farm']
+SAVE_KEYS = ['x', 'y', 'lv', 'xp', 'gold', 'hp', 'maxhp', 'mp', 'maxmp', 'atk', 'df', 'wl', 'slimes', 'quest', 'bag', 'eq', 'tm', 'day', 'gq', 'farm', 'char']
 
 
 def need(lv): return 20 + lv * lv * 8
@@ -936,7 +970,7 @@ def build_interior(iid):
     objs = [(by, pygame.transform.smoothscale(o, (max(1, int(o.get_width() * s)), max(1, int(o.get_height() * s)))), int(x * s), int(y * s)) for (by, o, x, y) in r['objs']]
     c = dict(id=iid, s=s, surf=surf, ox=(W - surf.get_width()) // 2, oy=(H - surf.get_height()) // 2, floor=r['floor'],
              solid=r['solid'], exit=r['exit'], spawn=r['spawn'], links=r['links'], label=r['label'], objs=objs, beds=r['beds'],
-             hs=Sheet('hero', scale=HS * k), sh=shs, npcs=npcs, k=k)
+             hs=Sheet(f'chars/c{P.char}', scale=HS * k), sh=shs, npcs=npcs, k=k)
     c['sleep'] = []
     if r['sleep']:   # penduduk tidur di kamar penginapan saat malam
         for n_, pos_ in zip(NPCS, r['sleep']):
@@ -1355,7 +1389,7 @@ def loadgame():
     if not os.path.exists(SAVE): note("Belum ada save."); return False
     try:
         with open(SAVE) as f: d = json.load(f)
-        P.farm = {}
+        P.farm = {}; P.char = 0
         for k, v in d.items():
             if k in ('pot', 'eth', 'v'): continue
             if k == 'area': area = v if v in ('town', 'hunt') else 'town'; continue
@@ -1371,6 +1405,7 @@ def loadgame():
         P.hp = clamp(int(P.hp), 1, P.maxhp); P.mp = clamp(int(P.mp), 0, P.maxmp)
         if area == 'town' and blocked(P.x, P.y): P.x, P.y = safe_spot(P.x, P.y)
         if area == 'hunt' and not hunt_ok(feet(P.x, P.y)): P.x, P.y = float(HENTRY[0]), float(HENTRY[1])
+        apply_char(P.char)
         loc = cur = None; reset_touch(); note("Game dimuat.")
         return True
     except Exception:
@@ -1535,10 +1570,68 @@ def title_pick(i):
     act = title['items'][i][1]
     if act == 'continue':
         if loadgame(): game_started = True; mode = 'explore'
-    elif act == 'new':
-        new_game(); game_started = True
-        say("Narator", ["Selamat datang di Eldenvale, desa kecil di tepi hutan.", "Temui Sir Aldric di dekat gereja. Ketuk ikon tas untuk membuka inventory dan setelan."])
+    elif act == 'new': enter_charsel()
     elif act == 'quit': quit_game()
+
+
+def enter_charsel():
+    global mode
+    mode = 'charsel'; CS['idx'] = P.char if 0 <= P.char < len(CHARS) else 0; reset_touch()
+
+
+def charsel_confirm():
+    global game_started
+    ci = CS['idx']; new_game(); apply_char(ci); game_started = True
+    say("Narator", [f"Selamat datang di Eldenvale, {CHARS[ci]['name']}. Desa kecil di tepi hutan ini akan menjadi awal perjalananmu.",
+                    "Temui Sir Aldric di dekat gereja. Ketuk ikon tas untuk membuka inventory dan setelan."])
+
+
+def charsel_layout():
+    n = len(CHARS); cols = 4 if W >= H * 1.3 else 2; rows = (n + cols - 1) // cols; gap = 14; bh = 56
+    by = H - SAFE_Y - bh - 8; top = int(H * 0.17); avail = max(60, by - 14 - top)
+    cw = max(60, min(260, (W - 2 * SAFE_X - gap * (cols - 1)) // cols)); ch = max(60, min(380, (avail - gap * (rows - 1)) // rows))
+    gw = cols * cw + gap * (cols - 1); gh = rows * ch + gap * (rows - 1); x0 = (W - gw) // 2; y0 = top + max(0, (avail - gh) // 2)
+    cards = [pygame.Rect(x0 + (i % cols) * (cw + gap), y0 + (i // cols) * (ch + gap), cw, ch) for i in range(n)]
+    bw = min(220, (W - 2 * SAFE_X - gap) // 2)
+    btns = [pygame.Rect(W // 2 - gap // 2 - bw, by, bw, bh), pygame.Rect(W // 2 + gap // 2, by, bw, bh)]
+    return cards, btns, cols
+
+
+def charsel_key(k, ok):
+    n = len(CHARS); cols = charsel_layout()[2]; i = CS['idx']
+    if k == K.K_LEFT: CS['idx'] = (i - 1) % n
+    elif k == K.K_RIGHT: CS['idx'] = (i + 1) % n
+    elif k == K.K_UP and i - cols >= 0: CS['idx'] = i - cols
+    elif k == K.K_DOWN and i + cols < n: CS['idx'] = i + cols
+    elif ok: charsel_confirm()
+    elif k == K.K_ESCAPE: enter_title()
+
+
+def charsel_press(x, y):
+    cards, btns, _ = charsel_layout(); p = (x, y)
+    for i, r in enumerate(cards):
+        if r.collidepoint(p): CS['idx'] = i; return
+    if btns[0].inflate(10, 10).collidepoint(p): enter_title()
+    elif btns[1].inflate(10, 10).collidepoint(p): charsel_confirm()
+
+
+def draw_charsel():
+    draw_town_bg(); t = pygame.time.get_ticks()
+    txt("PILIH KARAKTER", W // 2, max(SAFE_Y, int(H * 0.045)), F_L, C_GOLD, True, 'c')
+    txt("Pilih tokoh yang akan kamu mainkan", W // 2, max(SAFE_Y, int(H * 0.045)) + F_L.get_height() + 2, F_XS, C_MUTE, False, 'c')
+    cards, btns, _ = charsel_layout()
+    for i, r in enumerate(cards):
+        sel = i == CS['idx']; panel(r, 236 if sel else 186, 16, sel)
+        if sel: shape(r, None, 16, C_GOLD + (255,), 3)
+        ty = r.bottom - F_XS.get_height() - 10; ny = ty - F_MB.get_height() - 2; gy = ny - 6
+        ph = max(24, min(gy - r.y - 14, int(r.w * 1.05)))
+        sh_ = pygame.Surface((int(ph * 0.7), max(4, int(ph * 0.12))), pygame.SRCALPHA); pygame.draw.ellipse(sh_, (0, 0, 0, 110), sh_.get_rect())
+        screen.blit(sh_, (r.centerx - sh_.get_width() // 2, gy - sh_.get_height() // 2 - 2))
+        pim = char_pic(i, 'down', (t // 170) % 4, ph) if sel else char_pic(i, 'idle', 0, ph)
+        screen.blit(pim, (r.centerx - pim.get_width() // 2, gy - pim.get_height() - (int(abs(math.sin(t / 170.0)) * 3) if sel else 0)))
+        txt(CHARS[i]['name'], r.centerx, ny, F_MB, C_GOLD if sel else C_TEXT, True, 'c')
+        txt(CHARS[i]['title'], r.centerx, ty, F_XS, C_MUTE, False, 'c')
+    button(btns[0], 'Kembali', 'dark', False, F_MB, 'close'); button(btns[1], 'Mulai', 'gold', True, F_MB, 'play')
 
 
 def spaced(text, font, col, gap):
@@ -1551,13 +1644,17 @@ def spaced(text, font, col, gap):
     return s
 
 
-def draw_title():
+def draw_town_bg():
     t = pygame.time.get_ticks(); k = 0.5 + 0.5 * math.sin(t / 7000.0)
     cx = int(300 + (MW - W - 600) * k) if MW > W + 600 else 0; cy = int(clamp((MH - H) * (0.40 + 0.1 * math.sin(t / 9000.0)), 0, max(0, MH - H)))
     screen.fill((0, 0, 0)); screen.blit(MAP, ((W - MW) // 2 if MW < W else 0, 0), (cx, cy, min(W, MW), min(H, MH)))
     for (_by, _im, _x, _y) in V.visible_objs(TOWN, cx, cy, W, H): screen.blit(_im, (_x - cx, _y - cy))
     if S['fx']: V.draw_effects(screen, TOWN, cx, cy, 0, 0, W, H, t, 0.0)
     veil(96, (6, 10, 28)); fade_v((0, 0, W, int(H * 0.5)), 150, 0); fade_v((0, int(H * 0.55), W, H - int(H * 0.55)), 0, 190)
+
+
+def draw_title():
+    draw_town_bg()
     ty = int(H * 0.085); a = rt("ELDENVALE", F_T, C_GOLD)
     txt("ELDENVALE", W // 2, ty, F_T, C_GOLD, True, 'c')
     s = spaced("PETUALANGAN RPG", F_S, C_TEXT, 7); screen.blit(s, ((W - s.get_width()) // 2, ty + a.get_height() + 2))
@@ -2104,7 +2201,7 @@ BG_EVENTS = tuple(getattr(pygame, n) for n in ('WINDOWFOCUSLOST', 'APP_WILLENTER
 
 
 def autosave():
-    if game_started and mode not in ('title', 'error'): save(quiet=True)
+    if game_started and mode not in ('title', 'error', 'charsel'): save(quiet=True)
 
 
 def quit_game():
@@ -2128,7 +2225,7 @@ def recover():
     err_info = None; dialog = menu = battle = None; loc = cur = None
     if area == 'town' and blocked(P.x, P.y): P.x, P.y = safe_spot(P.x, P.y)
     if area == 'hunt' and not hunt_ok(feet(P.x, P.y)): P.x, P.y = float(HENTRY[0]), float(HENTRY[1])
-    reset_touch(); mode = 'explore' if game_started else 'title'
+    reset_touch(); mode = 'explore' if game_started else 'title'  # charsel -> title
     if mode == 'title': enter_title()
 
 
@@ -2154,6 +2251,7 @@ def handle_key(k):
             t = pygame.time.get_ticks()
             if t - title['last_esc'] < 2000: quit_game()
             title['last_esc'] = t; note("Tekan sekali lagi untuk keluar")
+    elif mode == 'charsel': charsel_key(k, ok)
     elif mode == 'error':
         if ok or k == K.K_ESCAPE: recover()
     elif mode == 'explore':
@@ -2210,6 +2308,7 @@ def press(fid, x, y):
     if mode == 'title':
         for i, r in enumerate(title_rects()):
             if r.inflate(10, 10).collidepoint(p): title['idx'] = i; title_pick(i); return
+    elif mode == 'charsel': charsel_press(x, y)
     elif mode == 'error':
         if err_btn().inflate(20, 20).collidepoint(p): recover()
     elif mode == 'explore':
@@ -2394,6 +2493,7 @@ def update(dt):
 
 def draw():
     if mode == 'title': draw_title(); return
+    if mode == 'charsel': draw_charsel(); return
     if mode == 'error': draw_error(); return
     if mode == 'battle' and battle: draw_battle()
     elif mode == 'inv' and inv['snap'] is not None: draw_inv()
