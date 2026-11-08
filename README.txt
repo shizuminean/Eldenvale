@@ -1,3 +1,24 @@
+PERUBAHAN v1.7.0  (BATTLE REAL-TIME ala MOBA, tanpa popup / layar battle)
+  - Layar battle giliran lama DIHAPUS. Monster tidak lagi membuka popup: semua pertarungan terjadi langsung di peta Hutan Berburu,
+    secara real-time. Logika baru ada di combat.py (main.py hanya memanggilnya).
+  - KONTROL (Android): joystick kiri untuk gerak. Kanan bawah: tombol SERANG besar (tahan = serang beruntun, kombo 3 pukulan,
+    pukulan ke-3 lebih kuat + dorong) dikelilingi 4 SKILL + tombol Ramuan.
+      Skill 1  Tebasan Merah   Lv 1   5 MP   cd 2,5 d   tebasan 150 derajat, damage 2x
+      Skill 2  Terjang Badai   Lv 2   8 MP   cd 5 d     melesat 215 px menembus musuh, kebal sesaat
+      Skill 3  Gempa Bumi      Lv 4   14 MP  cd 9 d     hantam area, damage 2,3x + STUN 1,3 d
+      Skill 4  Badai Pedang    Lv 6   24 MP  cd 24 d    ULTIMATE: berputar 2,4 d, menyayat semua musuh sekitar, damage diterima -50%
+    Tap skill = bidik otomatis ke musuh terdekat. TAHAN & GESER dari tombol skill = bidik manual (pratinjau area muncul), lepas = cast.
+    Tombol Ramuan: pulihkan HP (atau MP bila HP penuh). Serangan yang kena memulihkan MP; MP juga pulih pelan sendiri di hutan.
+  - KEYBOARD (PC): WASD/Panah gerak, J / Spasi / Z serang, 1 2 3 4 skill, P ramuan.
+  - MUSUH: tiap monster punya pola. Sebelum menyerang muncul TELEGRAF (area merah yang mengisi + sprite berkedip merah), jadi bisa dihindari:
+      melee (tebasan kerucut)  | charge: serigala/babi/kobra/kelelawar (terjang lurus)  | ranged: pemanah, penyihir, hantu, naga, golem kristal (proyektil)
+      slam: golem lumut/treant/zombie/ghoul (hantam area)  | Raja Slime: hantam + lompat ke posisimu  | Vampir: tembakan 3 arah, terjang, gigit
+    Musuh yang terkena bisa terdorong / ter-stun (boss hanya sedikit). Musuh yang dikejar terlalu jauh dari sarangnya akan pulang & memulihkan HP.
+  - TAMPILAN: bar HP musuh & pemain di atas kepala, angka damage (kritis 12%), ring target di musuh terdekat, efek tebasan/ring/proyektil,
+    getar layar (Setelan > Getar layar), bar HP boss di atas layar, tombol skill menampilkan cooldown + biaya MP + kunci level.
+  - Kalah: emas -50%, bangun di alun-alun (seperti sebelumnya). Menang: XP, emas, drop, dan progres misi tetap berlaku.
+  - Dihapus: encounter acak, layar battle, menu Serang/Tebasan/Item/Kabur.
+
 PERUBAHAN v1.6.0  (pilih karakter pemain + rapikan lampu desa)
   - LAMPU: lampu jalan tidak lagi berdiri di atas tangga & jembatan. village.py punya daftar NOGO (3 zona: 2 tangga barat, jembatan timur);
     lampu & bendera yang menyentuh zona itu dilewati. LAMPS_A diganti: 12 titik di tepi jalan, di sisi luar tangga/jembatan.
