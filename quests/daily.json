@@ -1,13 +1,13 @@
 {
-  "date": "2026-11-06",
+  "date": "2026-11-09",
   "quest": {
-    "desc": "Kalahkan 3 Goblin Pemanah di Hutan Berburu.",
+    "desc": "Kalahkan 3 Babi Hutan di Hutan Berburu.",
     "kind": "kill",
-    "match": "Goblin Pemanah",
+    "match": "Babi Hutan",
     "need": 3,
     "xp": 60,
     "gold": 130,
     "item": null,
-    "title": "Buru Goblin Pemanah"
+    "title": "Buru Babi Hutan"
   }
 }
