@@ -1,13 +1,13 @@
 {
-  "date": "2026-11-09",
+  "date": "2026-11-10",
   "quest": {
-    "desc": "Kalahkan 3 Babi Hutan di Hutan Berburu.",
+    "desc": "Kalahkan 3 Raja Slime di Hutan Berburu.",
     "kind": "kill",
-    "match": "Babi Hutan",
+    "match": "Raja Slime",
     "need": 3,
     "xp": 60,
     "gold": 130,
     "item": null,
-    "title": "Buru Babi Hutan"
+    "title": "Buru Raja Slime"
   }
 }
