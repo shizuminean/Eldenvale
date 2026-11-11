@@ -1,13 +1,13 @@
 {
-  "date": "2026-11-10",
+  "date": "2026-11-11",
   "quest": {
-    "desc": "Kalahkan 3 Raja Slime di Hutan Berburu.",
+    "desc": "Kalahkan 3 Kobra di Hutan Berburu.",
     "kind": "kill",
-    "match": "Raja Slime",
+    "match": "Kobra",
     "need": 3,
     "xp": 60,
     "gold": 130,
     "item": null,
-    "title": "Buru Raja Slime"
+    "title": "Buru Kobra"
   }
 }
