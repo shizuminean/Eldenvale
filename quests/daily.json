@@ -1,13 +1,13 @@
 {
-  "date": "2026-11-11",
+  "date": "2026-11-12",
   "quest": {
-    "desc": "Kalahkan 3 Kobra di Hutan Berburu.",
+    "desc": "Kalahkan 3 Kelelawar di Hutan Berburu.",
     "kind": "kill",
-    "match": "Kobra",
+    "match": "Kelelawar",
     "need": 3,
     "xp": 60,
     "gold": 130,
     "item": null,
-    "title": "Buru Kobra"
+    "title": "Buru Kelelawar"
   }
 }
