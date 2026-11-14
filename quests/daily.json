@@ -1,13 +1,13 @@
 {
-  "date": "2026-11-13",
+  "date": "2026-11-14",
   "quest": {
-    "desc": "Kalahkan 3 Slime Biru di Hutan Berburu.",
+    "desc": "Kalahkan 3 Kelelawar di Hutan Berburu.",
     "kind": "kill",
-    "match": "Slime Biru",
+    "match": "Kelelawar",
     "need": 3,
     "xp": 60,
     "gold": 130,
     "item": null,
-    "title": "Buru Slime Biru"
+    "title": "Buru Kelelawar"
   }
 }
