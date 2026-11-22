@@ -1,13 +1,13 @@
 {
-  "date": "2026-11-21",
+  "date": "2026-11-22",
   "quest": {
-    "desc": "Kalahkan 3 Babi Hutan di Hutan Berburu.",
+    "desc": "Kalahkan 3 Kobra di Hutan Berburu.",
     "kind": "kill",
-    "match": "Babi Hutan",
+    "match": "Kobra",
     "need": 3,
     "xp": 60,
     "gold": 130,
     "item": null,
-    "title": "Buru Babi Hutan"
+    "title": "Buru Kobra"
   }
 }
