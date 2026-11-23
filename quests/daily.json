@@ -1,13 +1,13 @@
 {
-  "date": "2026-11-22",
+  "date": "2026-11-23",
   "quest": {
-    "desc": "Kalahkan 3 Kobra di Hutan Berburu.",
+    "desc": "Kalahkan 3 Ghoul di Hutan Berburu.",
     "kind": "kill",
-    "match": "Kobra",
+    "match": "Ghoul",
     "need": 3,
     "xp": 60,
     "gold": 130,
     "item": null,
-    "title": "Buru Kobra"
+    "title": "Buru Ghoul"
   }
 }
