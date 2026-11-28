@@ -1,13 +1,13 @@
 {
-  "date": "2026-11-27",
+  "date": "2026-11-28",
   "quest": {
-    "desc": "Kalahkan 3 Goblin Pemanah di Hutan Berburu.",
+    "desc": "Kalahkan 3 Kobra di Hutan Berburu.",
     "kind": "kill",
-    "match": "Goblin Pemanah",
+    "match": "Kobra",
     "need": 3,
     "xp": 60,
     "gold": 130,
     "item": null,
-    "title": "Buru Goblin Pemanah"
+    "title": "Buru Kobra"
   }
 }
